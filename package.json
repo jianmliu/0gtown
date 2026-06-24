@@ -18,7 +18,7 @@
     "@onchainpal/gamekit": "workspace:*",
     "@onchainpal/npc-agent": "workspace:*",
     "@onchainpal/onchain": "workspace:*",
-    "@0gfoundation/0g-compute-ts-sdk": "^0.8.3",
+    "@0gfoundation/0g-compute-ts-sdk": "0.8.3",
     "@0gfoundation/0g-storage-ts-sdk": "^1.2.10",
     "ethers": "^6.16.0",
     "tsx": "^4.21.0",

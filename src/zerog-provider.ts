@@ -6,7 +6,13 @@
  * sub-account. Returns null when the env/funds are missing so the caller can fall
  * back to a scripted brain (the town still works, just without live 0G thoughts).
  */
+import { createRequire } from 'node:module';
 import type { InferenceProvider } from '@onchainpal/npc-agent';
+
+// The 0G compute SDK ships a broken ESM build (a chunk imports a missing internal
+// export 'C') that crashes under `await import()` in this "type":"module" package.
+// Its CJS build is fine, so load it via require. (Storage SDK + ethers ESM are OK.)
+const nodeRequire = createRequire(import.meta.url);
 
 export async function buildZerogProvider(): Promise<InferenceProvider | null> {
   const pk = process.env.ZEROG_WALLET_PK || process.env.PRIVATE_KEY;
@@ -16,7 +22,7 @@ export async function buildZerogProvider(): Promise<InferenceProvider | null> {
   }
   try {
     const { ethers }: any = await import('ethers');
-    const { createZGComputeNetworkBroker }: any = await import('@0gfoundation/0g-compute-ts-sdk');
+    const { createZGComputeNetworkBroker }: any = nodeRequire('@0gfoundation/0g-compute-ts-sdk');
     const { ZeroGBrokerProvider }: any = await import('@onchainpal/npc-agent');
 
     const mainnet = (process.env.ZEROG_NET || 'testnet').toLowerCase() === 'mainnet';
