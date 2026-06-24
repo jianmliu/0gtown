@@ -38,11 +38,15 @@ export async function buildZerogProvider(): Promise<InferenceProvider | null> {
     ) || svcs[0];
     if (!tee) { console.warn('[0gtown] no 0G inference services available → fallback'); return null; }
 
-    const deposit = Number(process.env.ZEROG_DEPOSIT || '0.05');
-    try { await broker.ledger.depositFund(deposit); console.log('[0gtown] deposited', deposit, '$0G to compute ledger'); }
-    catch (e: any) { console.warn('[0gtown] ledger deposit note:', e?.message?.slice(0, 120)); }
-    try { await broker.ledger.transferFund(tee.provider, 'inference', BigInt(Math.floor(deposit * 1e18))); }
-    catch (e: any) { console.warn('[0gtown] ledger transfer note:', e?.message?.slice(0, 120)); }
+    if (process.env.ZEROG_SKIP_DEPOSIT === '1') {
+      console.log('[0gtown] ZEROG_SKIP_DEPOSIT=1 — reusing existing ledger funds (no new deposit)');
+    } else {
+      const deposit = Number(process.env.ZEROG_DEPOSIT || '0.05');
+      try { await broker.ledger.depositFund(deposit); console.log('[0gtown] deposited', deposit, '$0G to compute ledger'); }
+      catch (e: any) { console.warn('[0gtown] ledger deposit note:', e?.message?.slice(0, 120)); }
+      try { await broker.ledger.transferFund(tee.provider, 'inference', BigInt(Math.floor(deposit * 1e18))); }
+      catch (e: any) { console.warn('[0gtown] ledger transfer note:', e?.message?.slice(0, 120)); }
+    }
 
     console.log('[0gtown] 0G Compute provider:', tee.provider, tee.model, tee.verifiability);
     return new ZeroGBrokerProvider({ broker, providerAddress: tee.provider });

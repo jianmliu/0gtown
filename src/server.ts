@@ -37,13 +37,13 @@ const TOWNSFOLK: Townsfolk[] = [
     background:
       'You are A-Bao, a warm, good-natured young noodle-stall owner in 0gtown. ' +
       'Trusting and a little naive, you love making friends and tend to believe what people tell you. ' +
-      'Keep replies to one or two short, friendly sentences. Always reply in English.',
+      'Keep replies to one or two short, friendly sentences. Reply in the SAME language the visitor uses — English to English, 中文对中文。',
   },
   {
     id: 'npc:0gtown:liu', name: 'Keeper Liu', startGcc: 10,
     background:
       'You are Keeper Liu, a shrewd, dry-humored teahouse keeper in 0gtown who reads people well. ' +
-      'Warm underneath, but hard to fool. Keep replies to one or two short sentences. Always reply in English.',
+      'Warm underneath, but hard to fool. Keep replies to one or two short sentences. Reply in the SAME language the visitor uses — English to English, 中文对中文。',
   },
 ];
 
@@ -120,7 +120,7 @@ export async function startServer(opts: { port?: number } = {}) {
   wss.on('connection', (ws: WebSocket) => {
     const visitorId = `player:visitor:${++seq}`;
     const sendJson = (o: unknown) => { try { ws.send(JSON.stringify(o)); } catch { /* peer gone */ } };
-    sendJson({ type: 'hello', town: '0gtown', liveMode, room: ROOM });
+    sendJson({ type: 'hello', town: '0gtown', liveMode, room: ROOM, receipts });
     roomSnapshot().then(sendJson);
 
     ws.on('message', async (raw) => {
