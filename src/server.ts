@@ -125,8 +125,9 @@ export async function startServer(opts: { port?: number } = {}) {
     // replay viewer + current run
     if (req.url === '/replay/latest.jsonl') {
       try {
+        const body = fsRead(`runs/${runId}.jsonl`);
         res.writeHead(200, { 'content-type': 'application/x-ndjson' });
-        res.end(fsRead(`runs/${runId}.jsonl`));
+        res.end(body);
       } catch {
         res.writeHead(404).end('no run yet');
       }
@@ -139,9 +140,13 @@ export async function startServer(opts: { port?: number } = {}) {
     if (req.url?.startsWith('/replay/')) {
       const name = req.url.slice('/replay/'.length).split('?')[0];
       const types: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+      const dir = viewerDir();
+      const resolved = path.join(dir, name);
+      if (!resolved.startsWith(dir)) { res.writeHead(403).end('forbidden'); return; }
       try {
+        const body = fsRead(resolved);
         res.writeHead(200, { 'content-type': types[path.extname(name)] ?? 'application/octet-stream' });
-        res.end(fsRead(path.join(viewerDir(), name)));
+        res.end(body);
       } catch {
         res.writeHead(404).end('not found');
       }
@@ -203,21 +208,26 @@ export async function startServer(opts: { port?: number } = {}) {
             attestation: t.attestation ?? null, verified,
             cost0G: round0G(t.costGcc ?? 0), balance0G: round0G(t.balanceGcc ?? 0), receipts,
           });
-          rec.tick(++replayT);
-          rec.event('town.talk', {
-            actor: npc.id,
-            target: visitorId,
-            by: 'npc',
-            data: {
-              said: t.said || fallbackLine(npc.id),
-              verified,
-              attestation: t.attestation ?? null,
-              costGcc: round0G(t.costGcc ?? 0),
-              balanceGcc: round0G(t.balanceGcc ?? 0),
-            },
-          });
-          rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
-          rec.flush();
+          // best-effort replay recording — the live reply is already sent; never let this break the interaction
+          try {
+            rec.tick(++replayT);
+            rec.event('town.talk', {
+              actor: npc.id,
+              target: visitorId,
+              by: 'npc',
+              data: {
+                said: t.said || fallbackLine(npc.id),
+                verified,
+                attestation: t.attestation ?? null,
+                costGcc: round0G(t.costGcc ?? 0),
+                balanceGcc: round0G(t.balanceGcc ?? 0),
+              },
+            });
+            rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
+            rec.flush();
+          } catch (e: any) {
+            console.warn('[0gtown] replay write skipped:', e?.message);
+          }
           return;
         }
 
@@ -237,20 +247,25 @@ export async function startServer(opts: { port?: number } = {}) {
               beliefRoot: beliefRoot.get(bkey(npc.id, claim)) ?? null,
               delta0G: 0, balance0G: round0G(bal), receipts,
             });
-            rec.tick(++replayT);
-            rec.event('town.refuse', {
-              actor: npc.id,
-              target: visitorId,
-              by: 'npc',
-              data: {
-                protected: true,
-                claim,
-                belief: beliefText.get(bkey(npc.id, claim)) ?? null,
-                beliefRoot: beliefRoot.get(bkey(npc.id, claim)) ?? null,
-              },
-            });
-            rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
-            rec.flush();
+            // best-effort replay recording — the live reply is already sent; never let this break the interaction
+            try {
+              rec.tick(++replayT);
+              rec.event('town.refuse', {
+                actor: npc.id,
+                target: visitorId,
+                by: 'npc',
+                data: {
+                  protected: true,
+                  claim,
+                  belief: beliefText.get(bkey(npc.id, claim)) ?? null,
+                  beliefRoot: beliefRoot.get(bkey(npc.id, claim)) ?? null,
+                },
+              });
+              rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
+              rec.flush();
+            } catch (e: any) {
+              console.warn('[0gtown] replay write skipped:', e?.message);
+            }
             return;
           }
 
@@ -271,22 +286,27 @@ export async function startServer(opts: { port?: number } = {}) {
             type: 'pitched', npc: npc.name, accepted: true, protected: false, belief,
             beliefRoot: root ?? null, delta0G: round0G(r.deltaGcc), balance0G: round0G(r.balanceGcc), receipts,
           });
-          rec.tick(++replayT);
-          rec.event('town.pitch', {
-            actor: npc.id,
-            target: visitorId,
-            by: 'visitor',
-            data: { accepted: true, amount, claim, deltaGcc: round0G(r.deltaGcc), balanceGcc: round0G(r.balanceGcc) },
-          });
-          if (root) {
-            rec.event('town.anchor', {
+          // best-effort replay recording — the live reply is already sent; never let this break the interaction
+          try {
+            rec.tick(++replayT);
+            rec.event('town.pitch', {
               actor: npc.id,
-              by: 'npc',
-              data: { claim, belief, beliefRoot: root },
+              target: visitorId,
+              by: 'visitor',
+              data: { accepted: true, amount, claim, deltaGcc: round0G(r.deltaGcc), balanceGcc: round0G(r.balanceGcc) },
             });
+            if (root) {
+              rec.event('town.anchor', {
+                actor: npc.id,
+                by: 'npc',
+                data: { claim, belief, beliefRoot: root },
+              });
+            }
+            rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
+            rec.flush();
+          } catch (e: any) {
+            console.warn('[0gtown] replay write skipped:', e?.message);
           }
-          rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
-          rec.flush();
           return;
         }
 

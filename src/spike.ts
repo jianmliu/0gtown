@@ -8,7 +8,7 @@
  *   npx tsx src/spike.ts                                           # fallback
  */
 import { WebSocket } from 'ws';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { validateFile } from '@onchainpal/replay';
 import { startServer } from './server';
 
@@ -40,18 +40,29 @@ await wait(500);
 console.log('\n--- done ---');
 
 // replay-stream validation — the run file must conform and carry the town events.
-const runs = readdirSync('runs').filter((f) => f.endsWith('.jsonl')).sort();
-const latest = `runs/${runs[runs.length - 1]}`;
-const res = validateFile(latest);
-if (!res.ok) { console.error('REPLAY VALIDATION FAILED ❌', res.errors); close(); process.exit(1); }
+// Wrapped in try/finally so the server is always torn down, even on a failed assertion.
+// (process.exit bypasses finally, so failures throw and exit happens after teardown.)
+let exitCode = 0;
+try {
+  const runs = existsSync('runs')
+    ? readdirSync('runs').filter((f) => f.endsWith('.jsonl')).sort()
+    : [];
+  if (!runs.length) throw new Error('no replay run file written under runs/');
+  const latest = `runs/${runs[runs.length - 1]}`;
+  const res = validateFile(latest);
+  if (!res.ok) throw new Error(`REPLAY VALIDATION FAILED ❌ ${JSON.stringify(res.errors)}`);
 
-const lines = readFileSync(latest, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-const events = lines.filter((o) => o.kind === 'tick').flatMap((o) => o.events);
-const kinds = new Set(events.map((e: any) => e.kind));
-if (!kinds.has('town.talk')) { console.error('expected a town.talk event'); close(); process.exit(1); }
-if (!kinds.has('town.pitch')) { console.error('expected a town.pitch event'); close(); process.exit(1); }
-if (!kinds.has('town.refuse')) { console.error('expected a town.refuse on the repeat pitch'); close(); process.exit(1); }
-console.log(`✓ replay stream ${latest} validates; events: ${[...kinds].join(', ')}`);
-
-close();
-process.exit(0);
+  const lines = readFileSync(latest, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const events = lines.filter((o) => o.kind === 'tick').flatMap((o) => o.events);
+  const kinds = new Set(events.map((e: any) => e.kind));
+  if (!kinds.has('town.talk')) throw new Error('expected a town.talk event');
+  if (!kinds.has('town.pitch')) throw new Error('expected a town.pitch event');
+  if (!kinds.has('town.refuse')) throw new Error('expected a town.refuse on the repeat pitch');
+  console.log(`✓ replay stream ${latest} validates; events: ${[...kinds].join(', ')}`);
+} catch (e: any) {
+  console.error(e?.message || e);
+  exitCode = 1;
+} finally {
+  close();
+}
+process.exit(exitCode);
