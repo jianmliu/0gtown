@@ -35,8 +35,8 @@ The hard 0G integration was inherited and **re-verified live on mainnet** — se
 Requires **Node 20** and a 0G wallet with a little testnet/mainnet $0G.
 
 ```bash
-git clone --recurse-submodules <this repo>
-cd aigg-0gtown
+git clone --recurse-submodules https://github.com/jianmliu/0gtown.git
+cd 0gtown
 corepack enable
 pnpm install
 
