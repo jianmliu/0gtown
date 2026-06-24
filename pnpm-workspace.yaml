@@ -1,0 +1,5 @@
+packages:
+  # Reusable agent engine (aigg-agent-kit), consumed as a git submodule.
+  # Provides @onchainpal/{gamekit,npc-agent,onchain}: SharedWorld, the AIGG
+  # platform NPCs (碧玄子), ZeroGBrokerProvider, memory, settlement seams.
+  - "kit/packages/*"

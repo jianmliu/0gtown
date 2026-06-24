@@ -1,0 +1,32 @@
+{
+  "name": "aigg-0gtown",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20"
+  },
+  "description": "0gtown — a browser-playable town where AI NPCs think on 0G Compute (TEE-verified) and learn from real play. Built on 0G for The Zero Cup.",
+  "scripts": {
+    "0gtown": "ZEROGTOWN_STORAGE=1 tsx src/server.ts",
+    "dev": "tsx src/server.ts",
+    "spike": "tsx src/spike.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@onchainpal/gamekit": "workspace:*",
+    "@onchainpal/npc-agent": "workspace:*",
+    "@onchainpal/onchain": "workspace:*",
+    "@0gfoundation/0g-compute-ts-sdk": "^0.8.3",
+    "@0gfoundation/0g-storage-ts-sdk": "^1.2.10",
+    "ethers": "^6.16.0",
+    "tsx": "^4.21.0",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.4",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.6.3"
+  }
+}
