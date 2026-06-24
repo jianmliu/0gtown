@@ -1,0 +1,8 @@
+node_modules
+kit
+.git
+.env
+.env.local
+*.tsbuildinfo
+.DS_Store
+docs
