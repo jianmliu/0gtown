@@ -1,0 +1,47 @@
+/**
+ * buildZerogProvider — construct a TEE-verified 0G Compute inference provider
+ * (the NPC "brain") from the engine's ZeroGBrokerProvider. Replicates the proven
+ * funding sequence from aigg-mud-demo's run-0g-verify.ts: build a broker over the
+ * wallet, pick a TeeML chat service, fund the ledger, transfer to the provider
+ * sub-account. Returns null when the env/funds are missing so the caller can fall
+ * back to a scripted brain (the town still works, just without live 0G thoughts).
+ */
+import type { InferenceProvider } from '@onchainpal/npc-agent';
+
+export async function buildZerogProvider(): Promise<InferenceProvider | null> {
+  const pk = process.env.ZEROG_WALLET_PK || process.env.PRIVATE_KEY;
+  if (!pk) {
+    console.warn('[0gtown] no ZEROG_WALLET_PK/PRIVATE_KEY → falling back to scripted brain (no live 0G Compute)');
+    return null;
+  }
+  try {
+    const { ethers }: any = await import('ethers');
+    const { createZGComputeNetworkBroker }: any = await import('@0gfoundation/0g-compute-ts-sdk');
+    const { ZeroGBrokerProvider }: any = await import('@onchainpal/npc-agent');
+
+    const mainnet = (process.env.ZEROG_NET || 'testnet').toLowerCase() === 'mainnet';
+    const rpc = process.env.ZEROG_RPC || (mainnet ? 'https://evmrpc.0g.ai' : 'https://evmrpc-testnet.0g.ai');
+    const wallet = new ethers.Wallet(pk, new ethers.JsonRpcProvider(rpc));
+    console.log('[0gtown] 0G wallet', wallet.address, '· net', mainnet ? 'mainnet' : 'testnet');
+
+    const broker = await createZGComputeNetworkBroker(wallet);
+    const svcs = await broker.inference.listService();
+    const tee = svcs.find((s: any) =>
+      String(s.verifiability ?? '').toLowerCase().includes('tee') &&
+      String(s.serviceType ?? '').includes('chat')
+    ) || svcs[0];
+    if (!tee) { console.warn('[0gtown] no 0G inference services available → fallback'); return null; }
+
+    const deposit = Number(process.env.ZEROG_DEPOSIT || '0.05');
+    try { await broker.ledger.depositFund(deposit); console.log('[0gtown] deposited', deposit, '$0G to compute ledger'); }
+    catch (e: any) { console.warn('[0gtown] ledger deposit note:', e?.message?.slice(0, 120)); }
+    try { await broker.ledger.transferFund(tee.provider, 'inference', BigInt(Math.floor(deposit * 1e18))); }
+    catch (e: any) { console.warn('[0gtown] ledger transfer note:', e?.message?.slice(0, 120)); }
+
+    console.log('[0gtown] 0G Compute provider:', tee.provider, tee.model, tee.verifiability);
+    return new ZeroGBrokerProvider({ broker, providerAddress: tee.provider });
+  } catch (e: any) {
+    console.warn('[0gtown] 0G provider build failed → fallback:', e?.message?.slice(0, 160));
+    return null;
+  }
+}
