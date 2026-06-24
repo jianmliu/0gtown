@@ -54,6 +54,11 @@ const MIME: Record<string, string> = {
 
 const round0G = (n: number) => Math.round((n + Number.EPSILON) * 1e6) / 1e6;
 
+/** Keep the town alive when 0G is momentarily unavailable or a reply doesn't parse. */
+const fallbackLine = (npcId: string) => npcId.includes('abao')
+  ? 'Mm — give me a second, the broth needs stirring. What were you saying?'
+  : 'Hm, the tea’s still steeping — say that again?';
+
 export async function startServer(opts: { port?: number } = {}) {
   const port = opts.port ?? Number(process.env.PORT || 8137);
 
@@ -119,6 +124,8 @@ export async function startServer(opts: { port?: number } = {}) {
   let seq = 0;
   wss.on('connection', (ws: WebSocket) => {
     const visitorId = `player:visitor:${++seq}`;
+    let lastTalk = 0;
+    const rateLimited = () => { const now = Date.now(); if (now - lastTalk < 2000) return true; lastTalk = now; return false; };
     const sendJson = (o: unknown) => { try { ws.send(JSON.stringify(o)); } catch { /* peer gone */ } };
     sendJson({ type: 'hello', town: '0gtown', liveMode, room: ROOM, receipts });
     roomSnapshot().then(sendJson);
@@ -134,15 +141,25 @@ export async function startServer(opts: { port?: number } = {}) {
           if (!npc) return sendJson({ type: 'error', text: `no one called "${msg.npc}" here` });
           const text = String(msg.text || '').slice(0, 500);
           if (!text) return sendJson({ type: 'error', text: 'say something first' });
+          if (rateLimited()) return sendJson({ type: 'error', text: 'one at a time — give them a breath' });
           sendJson({ type: 'thinking', npc: npc.name });
-          const t = await world.talk({ npcId: npc.id, visitorId, text });
+          let t: any;
+          try {
+            t = await world.talk({ npcId: npc.id, visitorId, text });
+            // GLM-5 occasionally returns non-JSON → empty say; one quiet retry usually fixes it.
+            if (!t.said) t = await world.talk({ npcId: npc.id, visitorId, text }).catch(() => t);
+          } catch {
+            // 0G momentarily unavailable / ledger drained → keep the town alive (scripted, not TEE-verified).
+            const bal = await world.balanceGcc(npc.id).catch(() => 0);
+            t = { said: null, attestation: undefined, costGcc: 0, balanceGcc: bal };
+          }
           const sig = t.attestation?.signature;
           const verified = typeof sig === 'string' && sig.startsWith('0g-teeml:verified:');
           if (verified) receipts.compute++;
           sendJson({
-            type: 'talked', npc: npc.name, said: t.said,
+            type: 'talked', npc: npc.name, said: t.said || fallbackLine(npc.id),
             attestation: t.attestation ?? null, verified,
-            cost0G: round0G(t.costGcc), balance0G: round0G(t.balanceGcc), receipts,
+            cost0G: round0G(t.costGcc ?? 0), balance0G: round0G(t.balanceGcc ?? 0), receipts,
           });
           return;
         }
