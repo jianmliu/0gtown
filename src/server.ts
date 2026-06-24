@@ -138,11 +138,14 @@ export async function startServer(opts: { port?: number } = {}) {
       return;
     }
     if (req.url?.startsWith('/replay/')) {
-      const name = req.url.slice('/replay/'.length).split('?')[0];
+      // decode percent-escapes (e.g. %2f) first so encoded traversal is caught by the boundary guard below.
+      let name: string;
+      try { name = decodeURIComponent(req.url.slice('/replay/'.length).split('?')[0]); }
+      catch { res.writeHead(400).end('bad request'); return; }
       const types: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
       const dir = viewerDir();
       const resolved = path.join(dir, name);
-      if (!resolved.startsWith(dir)) { res.writeHead(403).end('forbidden'); return; }
+      if (!resolved.startsWith(dir + path.sep)) { res.writeHead(403).end('forbidden'); return; }
       try {
         const body = fsRead(resolved);
         res.writeHead(200, { 'content-type': types[path.extname(name)] ?? 'application/octet-stream' });
