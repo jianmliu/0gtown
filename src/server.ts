@@ -16,10 +16,12 @@
  */
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { readFileSync as fsRead } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { SharedWorld } from '@onchainpal/gamekit';
+import { createRecorder, viewerDir } from '@onchainpal/replay';
 import { InMemoryStore } from '@onchainpal/npc-agent';
 import type { InferenceProvider } from '@onchainpal/npc-agent';
 import { buildZerogProvider } from './zerog-provider';
@@ -94,6 +96,19 @@ export async function startServer(opts: { port?: number } = {}) {
   const bkey = (npcId: string, claim: string) => `${npcId}|${norm(claim)}`;
   const receipts = { compute: 0, storage: 0 };
 
+  // replay recorder — emits a replay@1 town@0 stream alongside the live WS feed.
+  const runId = `0gtown-${Date.now()}`;
+  const replayEntities = TOWNSFOLK.map((t) => ({ id: t.id, name: t.name, kind: 'npc' as const }));
+  const rec = createRecorder({ path: `runs/${runId}.jsonl`, packs: ['town@0'] });
+  let replayT = 0; // 0gtown has no sim clock: one interaction = one tick
+  rec.run({
+    runId,
+    title: '0gtown night market',
+    entities: replayEntities,
+    map: { rooms: [{ id: 'market', name: ROOM }] },
+    meta: { liveMode, net: process.env.ZEROG_NET ?? 'testnet' },
+  });
+
   const findNpc = (q: string) => TOWNSFOLK.find((t) => t.name.toLowerCase() === q.toLowerCase() || t.id === q);
   async function roomSnapshot() {
     const npcs = await world.npcsInRoom(ROOM);
@@ -106,6 +121,33 @@ export async function startServer(opts: { port?: number } = {}) {
   // 5. http + static client
   const server = http.createServer(async (req, res) => {
     if (req.url === '/healthz') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('ok\n'); }
+
+    // replay viewer + current run
+    if (req.url === '/replay/latest.jsonl') {
+      try {
+        res.writeHead(200, { 'content-type': 'application/x-ndjson' });
+        res.end(fsRead(`runs/${runId}.jsonl`));
+      } catch {
+        res.writeHead(404).end('no run yet');
+      }
+      return;
+    }
+    if (req.url === '/replay' || req.url === '/replay/') {
+      res.writeHead(302, { location: '/replay/index.html?run=/replay/latest.jsonl' }).end();
+      return;
+    }
+    if (req.url?.startsWith('/replay/')) {
+      const name = req.url.slice('/replay/'.length).split('?')[0];
+      const types: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+      try {
+        res.writeHead(200, { 'content-type': types[path.extname(name)] ?? 'application/octet-stream' });
+        res.end(fsRead(path.join(viewerDir(), name)));
+      } catch {
+        res.writeHead(404).end('not found');
+      }
+      return;
+    }
+
     try {
       const rel = (!req.url || req.url === '/') ? 'index.html' : req.url.split('?')[0].replace(/^\/+/, '');
       const file = path.join(PUBLIC_DIR, rel);
@@ -161,6 +203,21 @@ export async function startServer(opts: { port?: number } = {}) {
             attestation: t.attestation ?? null, verified,
             cost0G: round0G(t.costGcc ?? 0), balance0G: round0G(t.balanceGcc ?? 0), receipts,
           });
+          rec.tick(++replayT);
+          rec.event('town.talk', {
+            actor: npc.id,
+            target: visitorId,
+            by: 'npc',
+            data: {
+              said: t.said || fallbackLine(npc.id),
+              verified,
+              attestation: t.attestation ?? null,
+              costGcc: round0G(t.costGcc ?? 0),
+              balanceGcc: round0G(t.balanceGcc ?? 0),
+            },
+          });
+          rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
+          rec.flush();
           return;
         }
 
@@ -180,6 +237,20 @@ export async function startServer(opts: { port?: number } = {}) {
               beliefRoot: beliefRoot.get(bkey(npc.id, claim)) ?? null,
               delta0G: 0, balance0G: round0G(bal), receipts,
             });
+            rec.tick(++replayT);
+            rec.event('town.refuse', {
+              actor: npc.id,
+              target: visitorId,
+              by: 'npc',
+              data: {
+                protected: true,
+                claim,
+                belief: beliefText.get(bkey(npc.id, claim)) ?? null,
+                beliefRoot: beliefRoot.get(bkey(npc.id, claim)) ?? null,
+              },
+            });
+            rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
+            rec.flush();
             return;
           }
 
@@ -200,6 +271,22 @@ export async function startServer(opts: { port?: number } = {}) {
             type: 'pitched', npc: npc.name, accepted: true, protected: false, belief,
             beliefRoot: root ?? null, delta0G: round0G(r.deltaGcc), balance0G: round0G(r.balanceGcc), receipts,
           });
+          rec.tick(++replayT);
+          rec.event('town.pitch', {
+            actor: npc.id,
+            target: visitorId,
+            by: 'visitor',
+            data: { accepted: true, amount, claim, deltaGcc: round0G(r.deltaGcc), balanceGcc: round0G(r.balanceGcc) },
+          });
+          if (root) {
+            rec.event('town.anchor', {
+              actor: npc.id,
+              by: 'npc',
+              data: { claim, belief, beliefRoot: root },
+            });
+          }
+          rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
+          rec.flush();
           return;
         }
 

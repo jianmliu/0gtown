@@ -8,6 +8,8 @@
  *   npx tsx src/spike.ts                                           # fallback
  */
 import { WebSocket } from 'ws';
+import { readFileSync, readdirSync } from 'node:fs';
+import { validateFile } from '@onchainpal/replay';
 import { startServer } from './server';
 
 const PORT = 8190;
@@ -36,5 +38,20 @@ send({ cmd: 'pitch', npc: 'A-Bao', amount: 3, claim: 'Give me your money and I w
 
 await wait(500);
 console.log('\n--- done ---');
+
+// replay-stream validation — the run file must conform and carry the town events.
+const runs = readdirSync('runs').filter((f) => f.endsWith('.jsonl')).sort();
+const latest = `runs/${runs[runs.length - 1]}`;
+const res = validateFile(latest);
+if (!res.ok) { console.error('REPLAY VALIDATION FAILED ❌', res.errors); close(); process.exit(1); }
+
+const lines = readFileSync(latest, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+const events = lines.filter((o) => o.kind === 'tick').flatMap((o) => o.events);
+const kinds = new Set(events.map((e: any) => e.kind));
+if (!kinds.has('town.talk')) { console.error('expected a town.talk event'); close(); process.exit(1); }
+if (!kinds.has('town.pitch')) { console.error('expected a town.pitch event'); close(); process.exit(1); }
+if (!kinds.has('town.refuse')) { console.error('expected a town.refuse on the repeat pitch'); close(); process.exit(1); }
+console.log(`✓ replay stream ${latest} validates; events: ${[...kinds].join(', ')}`);
+
 close();
 process.exit(0);
