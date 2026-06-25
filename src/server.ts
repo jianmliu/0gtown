@@ -24,7 +24,7 @@ import { SharedWorld } from '@onchainpal/gamekit';
 import { createRecorder, viewerDir } from '@onchainpal/replay';
 import { InMemoryStore } from '@onchainpal/npc-agent';
 import type { InferenceProvider } from '@onchainpal/npc-agent';
-import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote } from '@onchainpal/cognition';
+import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction } from '@onchainpal/cognition';
 import { buildZerogProvider } from './zerog-provider';
 import { FallbackProvider } from './fallback-provider';
 import { ZeroGStorageClient, ZEROG_TESTNET } from './zerog-storage';
@@ -114,6 +114,15 @@ export async function startServer(opts: { port?: number } = {}) {
   const norm = (claim: string) => claim.trim().toLowerCase();
   const receipts = { compute: 0, storage: 0 };
 
+  // 4b. society — server-side lending + public rap sheet (②c-1). Lending is bookkeeping ONLY:
+  //     the world has no NPC→visitor $0G transfer, so the lender's world balance is NOT debited and a
+  //     deadbeat's repayment escrow is 0 (no `repay` command yet). A global `nowSeq` (one tick per
+  //     interaction) drives loan maturity: a loan opened on action N matures on the visitor's action N+1.
+  const rapSheet = new RapSheet();
+  const loanBook = new LoanBook();
+  let nowSeq = 0;
+  const lendBalanceOf = (_id: string) => 0;
+
   // replay recorder — emits a replay@1 town@0 stream alongside the live WS feed.
   const runId = `0gtown-${Date.now()}`;
   const replayEntities = TOWNSFOLK.map((t) => ({ id: t.id, name: t.name, kind: 'npc' as const }));
@@ -128,6 +137,36 @@ export async function startServer(opts: { port?: number } = {}) {
   });
 
   const findNpc = (q: string) => TOWNSFOLK.find((t) => t.name.toLowerCase() === q.toLowerCase() || t.id === q);
+
+  /** Settle every loan matured at the current `nowSeq`. For each default: record the misconduct
+   *  (②a belief + rap entry), emit town.default/town.rap, run the rap-gated guild ban, and emit
+   *  town.propose/vote/sanction. Best-effort — `rec`/`replayT` are the startup globals; a fresh tick
+   *  carries the settlement events. Never throws (callers may be a closing socket). */
+  async function settleDue(): Promise<void> {
+    const settlements = loanBook.settle(nowSeq, lendBalanceOf);
+    for (const s of settlements) {
+      if (!s.defaulted) continue;
+      try {
+        await recordMisconduct(cognition, rapSheet, s.lender, s.borrower, 'default', nowSeq, `defaulted on a ${round0G(s.owed)} $0G loan from ${s.lender}`);
+        rec.tick(++replayT);
+        rec.event('town.default', { actor: s.lender, target: s.borrower, by: 'engine', data: { lender: s.lender, borrower: s.borrower, owed: round0G(s.owed), recovered: round0G(s.paid) } });
+        rec.event('town.rap', { actor: s.borrower, by: 'engine', data: { offender: s.borrower, kind: 'default', victim: s.lender } });
+        const round = await runRapSanction(rapSheet, polity, s.lender, s.borrower, guildIds, { until: Infinity });
+        if (round) {
+          rec.event('town.propose', { actor: s.lender, target: s.borrower, by: 'npc', data: { proposer: s.lender, target: s.borrower, topic: `misconduct-${s.borrower}`, pid: round.pid } });
+          for (const [voter, choice] of Object.entries(round.votes)) {
+            if (voter === s.lender) continue;
+            rec.event('town.vote', { actor: voter, target: s.borrower, by: 'npc', data: { voter, choice, pid: round.pid } });
+          }
+          rec.event('town.sanction', { actor: s.lender, target: s.borrower, by: 'engine', data: { target: s.borrower, passed: round.result.passed, shareFor: round.result.shareFor } });
+        }
+        rec.flush();
+      } catch (e: any) {
+        console.warn('[0gtown] settlement/replay skipped:', e?.message);
+      }
+    }
+  }
+
   async function roomSnapshot() {
     const npcs = await world.npcsInRoom(ROOM);
     return {
@@ -202,6 +241,11 @@ export async function startServer(opts: { port?: number } = {}) {
       let msg: any;
       try { msg = JSON.parse(raw.toString()); } catch { return; }
       try {
+        // settle-on-next-action: advance the clock, then mature any due loan BEFORE this command runs —
+        // a defaulting deadbeat lands the guild ban first, which the sanction-first checks then refuse.
+        nowSeq++;
+        await settleDue();
+
         if (msg.cmd === 'look') { sendJson(await roomSnapshot()); return; }
 
         if (msg.cmd === 'talk') {
@@ -392,10 +436,39 @@ export async function startServer(opts: { port?: number } = {}) {
           return;
         }
 
+        if (msg.cmd === 'borrow') {
+          const npc = findNpc(String(msg.npc ?? ''));
+          const amount = Number(msg.amount ?? 0);
+          if (!npc) return sendJson({ type: 'error', text: `no one called "${msg.npc}" here` });
+          if (!(amount > 0)) return sendJson({ type: 'error', text: 'a loan needs an amount' });
+          // sanction-first: a banned deadbeat can't borrow either
+          if (polity.sanctioned(visitorId)) {
+            sendJson({ type: 'lent', npc: npc.name, accepted: false, protected: true, reason: 'The night-market guild has barred you. No credit.', receipts });
+            return;
+          }
+          const loan = loanBook.lend(npc.id, visitorId, { principal: amount }, nowSeq);
+          sendJson({ type: 'lent', npc: npc.name, accepted: true, amount: round0G(amount), due: loan.due, receipts });
+          // best-effort replay recording — the live reply is already sent
+          try {
+            rec.tick(++replayT);
+            rec.event('town.lend', { actor: npc.id, target: visitorId, by: 'npc', data: { lender: npc.id, borrower: visitorId, amount: round0G(amount), due: loan.due } });
+            rec.flush();
+          } catch (e: any) {
+            console.warn('[0gtown] replay write skipped:', e?.message);
+          }
+          return;
+        }
+
         sendJson({ type: 'error', text: `unknown command: ${msg.cmd}` });
       } catch (e: any) {
         sendJson({ type: 'error', text: String(e?.message || e).slice(0, 160) });
       }
+    });
+
+    // settle the disconnecting visitor's matured loans (the socket is gone — no ws.send, fully try/caught)
+    ws.on('close', () => {
+      nowSeq++;
+      void settleDue().catch((e: any) => console.warn('[0gtown] close settle skipped:', e?.message));
     });
   });
 

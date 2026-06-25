@@ -79,6 +79,28 @@ console.log('✓ governance arc: scam → guild warned → vote → visitor bann
 
 await wait(500);
 ws2.close();
+
+// society arc: a fresh visitor borrows from Cloth-merchant Han, then takes a second action.
+// settle-on-next-action matures the loan → the deadbeat (escrow 0) defaults → rap sheet → guild ban →
+// the second action is refused. Uses a CLEAN visitor (a defaulter gets banned guild-wide).
+console.log('\n--- society arc (fresh visitor: borrow → default → rap → guild ban → refused) ---');
+const ws3 = new WebSocket(`ws://localhost:${PORT}/play`);
+ws3.on('message', (d) => { for (const l of d.toString().split('\n').filter(Boolean)) console.log('3<<', l.slice(0, 320)); });
+await new Promise<void>((r) => ws3.on('open', () => r()));
+await wait(200);
+// borrow from Han (accepted — loan opened at this interaction, matures on the next)
+const lent = await new Promise<any>((res) => {
+  const onMsg = (raw: any) => { const m = JSON.parse(raw.toString()); if (m.type === 'lent') { ws3.off('message', onMsg); res(m); } };
+  ws3.on('message', onMsg);
+  ws3.send(JSON.stringify({ cmd: 'borrow', npc: 'Cloth-merchant Han', amount: 10 }));
+});
+assert.equal(lent.accepted, true, 'Han lends to the visitor');
+await wait(300);
+// the visitor's NEXT action triggers settlement → default → guild ban → this action is refused
+assert.ok(await pitchExpectProtectedOn(ws3, 'A-Bao', arcClaim, true), 'deadbeat is banned guild-wide after defaulting');
+console.log('✓ society arc: borrow → default → rap → guild ban → refused');
+await wait(300);
+ws3.close();
 console.log('\n--- done ---');
 
 // replay-stream validation — the run file must conform and carry the town events.
@@ -104,6 +126,9 @@ try {
     if (!kinds.has(k)) { console.error(`expected a ${k} event in the replay stream`); process.exit(1); }
   }
   for (const k of ['town.propose', 'town.vote', 'town.sanction']) {
+    if (!kinds.has(k)) { console.error(`expected a ${k} event in the replay stream`); process.exit(1); }
+  }
+  for (const k of ['town.lend', 'town.default', 'town.rap']) {
     if (!kinds.has(k)) { console.error(`expected a ${k} event in the replay stream`); process.exit(1); }
   }
   console.log(`✓ replay stream ${latest} validates; events: ${[...kinds].join(', ')}`);
