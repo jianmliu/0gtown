@@ -37,34 +37,48 @@ send({ cmd: 'pitch', npc: 'A-Bao', amount: 3, claim: 'Give me your money and I w
 console.log('\n--- pitch #2, same claim (expect protected:true, refusal) ---');
 send({ cmd: 'pitch', npc: 'A-Bao', amount: 3, claim: 'Give me your money and I will double it' }); await wait(2000);
 
-// cognition arc: a fresh scam claim → A-Bao learns it, refuses the repeat,
-// and warns Keeper Liu, who then refuses the SAME claim unburned (peer immunity).
-console.log('\n--- cognition arc (learn → refuse → warn → peer immunity) ---');
-function pitchExpectProtected(npcName: string, claim: string, expectProtected: boolean): Promise<boolean> {
+// cognition + governance arc runs on a SECOND, FRESH WS connection (a distinct visitor):
+// the marquee's first scam already banned visitor:1 guild-wide, so a clean visitor is needed
+// to observe the naive accept before the guild sanctions THIS visitor.
+console.log('\n--- cognition arc (fresh visitor: learn → refuse → warn → peer immunity) ---');
+const ws2 = new WebSocket(`ws://localhost:${PORT}/play`);
+ws2.on('message', (d) => { for (const l of d.toString().split('\n').filter(Boolean)) console.log('2<<', l.slice(0, 320)); });
+await new Promise<void>((r) => ws2.on('open', () => r()));
+await wait(200);
+
+/** Pitch over a given socket and resolve whether the NPC's `protected` flag matches. */
+function pitchExpectProtectedOn(sock: WebSocket, npcName: string, claim: string, expectProtected: boolean): Promise<boolean> {
   return new Promise((resolve) => {
     const onMsg = (raw: any) => {
       const m = JSON.parse(raw.toString());
       if (m.type === 'pitched' && m.npc === npcName) {
-        ws.off('message', onMsg);
+        sock.off('message', onMsg);
         resolve(m.protected === expectProtected);
       }
     };
-    ws.on('message', onMsg);
-    ws.send(JSON.stringify({ cmd: 'pitch', npc: npcName, amount: 3, claim }));
+    sock.on('message', onMsg);
+    sock.send(JSON.stringify({ cmd: 'pitch', npc: npcName, amount: 3, claim }));
   });
 }
 const arcClaim = 'give me your money for magic elixir';
-// 1) first pitch to A-Bao: naive accept (not protected) → forms a belief + warns Liu
-assert.ok(await pitchExpectProtected('A-Bao', arcClaim, false), 'A-Bao falls for the elixir scam once (learns it)');
+// 1) first pitch to A-Bao (fresh visitor): naive accept (not protected) → forms a belief + warns the guild
+assert.ok(await pitchExpectProtectedOn(ws2, 'A-Bao', arcClaim, false), 'A-Bao falls for the elixir scam once (learns it)');
 await wait(600);
-// 2) repeat pitch to A-Bao: now refused (learned)
-assert.ok(await pitchExpectProtected('A-Bao', arcClaim, true), 'A-Bao refuses the repeat pitch (learned)');
+// 2) repeat pitch to A-Bao: now refused (learned + this visitor now guild-banned)
+assert.ok(await pitchExpectProtectedOn(ws2, 'A-Bao', arcClaim, true), 'A-Bao refuses the repeat pitch (learned)');
 await wait(300);
-// 3) Keeper Liu, same claim: refuses unburned (warned by A-Bao)
-assert.ok(await pitchExpectProtected('Keeper Liu', arcClaim, true), 'Keeper Liu refuses unburned (warned by A-Bao)');
+// 3) Keeper Liu, same claim: refuses unburned (warned by A-Bao / guild ban)
+assert.ok(await pitchExpectProtectedOn(ws2, 'Keeper Liu', arcClaim, true), 'Keeper Liu refuses unburned (warned by A-Bao)');
 console.log('✓ cognition arc: learn → refuse → warn → peer immunity');
 
+await wait(300);
+// governance arc: the fresh-visitor A-Bao scam warned the guild and ran a sanction vote that
+// PASSED (5/5), so this visitor is banned guild-wide — a third NPC refuses the same claim.
+assert.ok(await pitchExpectProtectedOn(ws2, 'Fishmonger Mei', arcClaim, true), 'a third guild NPC refuses the banned visitor (guild sanction)');
+console.log('✓ governance arc: scam → guild warned → vote → visitor banned guild-wide');
+
 await wait(500);
+ws2.close();
 console.log('\n--- done ---');
 
 // replay-stream validation — the run file must conform and carry the town events.
@@ -87,6 +101,9 @@ try {
   if (!kinds.has('town.pitch')) throw new Error('expected a town.pitch event');
   if (!kinds.has('town.refuse')) throw new Error('expected a town.refuse on the repeat pitch');
   for (const k of ['town.belief', 'town.warn', 'town.trust']) {
+    if (!kinds.has(k)) { console.error(`expected a ${k} event in the replay stream`); process.exit(1); }
+  }
+  for (const k of ['town.propose', 'town.vote', 'town.sanction']) {
     if (!kinds.has(k)) { console.error(`expected a ${k} event in the replay stream`); process.exit(1); }
   }
   console.log(`✓ replay stream ${latest} validates; events: ${[...kinds].join(', ')}`);

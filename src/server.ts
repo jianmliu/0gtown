@@ -24,7 +24,7 @@ import { SharedWorld } from '@onchainpal/gamekit';
 import { createRecorder, viewerDir } from '@onchainpal/replay';
 import { InMemoryStore } from '@onchainpal/npc-agent';
 import type { InferenceProvider } from '@onchainpal/npc-agent';
-import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse } from '@onchainpal/cognition';
+import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote } from '@onchainpal/cognition';
 import { buildZerogProvider } from './zerog-provider';
 import { FallbackProvider } from './fallback-provider';
 import { ZeroGStorageClient, ZEROG_TESTNET } from './zerog-storage';
@@ -47,6 +47,18 @@ const TOWNSFOLK: Townsfolk[] = [
     background:
       'You are Keeper Liu, a shrewd, dry-humored teahouse keeper in 0gtown who reads people well. ' +
       'Warm underneath, but hard to fool. Keep replies to one or two short sentences. Reply in the SAME language the visitor uses — English to English, 中文对中文。',
+  },
+  {
+    id: 'npc:0gtown:mei', name: 'Fishmonger Mei', startGcc: 10,
+    background: 'A sharp-eyed fishmonger at the night market who has seen every trick. Wary of strangers, quick to spread word among the stalls.',
+  },
+  {
+    id: 'npc:0gtown:guo', name: 'Fruit-seller Guo', startGcc: 10,
+    background: 'A cheerful fruit-seller who trusts his neighbours and listens to the market guild. Easily alarmed by talk of swindlers.',
+  },
+  {
+    id: 'npc:0gtown:han', name: 'Cloth-merchant Han', startGcc: 10,
+    background: 'A measured cloth-merchant, respected in the guild, who weighs a claim before judging but stands with his fellow stallholders.',
   },
 ];
 
@@ -97,6 +109,8 @@ export async function startServer(opts: { port?: number } = {}) {
     : new FakeKernel();
   const trust = new TrustLedger();
   const cognition = new Cognition(memKernel, trust);
+  const guildIds = TOWNSFOLK.map((t) => t.id);
+  const polity = new Polity();
   const norm = (claim: string) => claim.trim().toLowerCase();
   const receipts = { compute: 0, storage: 0 };
 
@@ -246,6 +260,32 @@ export async function startServer(opts: { port?: number } = {}) {
           if (!(amount > 0) || !claim) return sendJson({ type: 'error', text: 'a pitch needs an amount and a claim' });
 
           const topic = norm(claim);
+
+          // guild ban (sanction-first): a visitor the guild has sanctioned is refused outright
+          if (polity.sanctioned(visitorId)) {
+            const bal = await world.balanceGcc(npc.id);
+            const belief = 'The night-market guild has barred you. No deal.';
+            sendJson({
+              type: 'pitched', npc: npc.name, accepted: false, protected: true,
+              belief, beliefRoot: null,
+              delta0G: 0, balance0G: round0G(bal), receipts,
+            });
+            try {
+              rec.tick(++replayT);
+              rec.event('town.refuse', {
+                actor: npc.id,
+                target: visitorId,
+                by: 'npc',
+                data: { protected: true, claim, belief, beliefRoot: null, bannedByGuild: true },
+              });
+              rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
+              rec.flush();
+            } catch (e: any) {
+              console.warn('[0gtown] replay write skipped:', e?.message);
+            }
+            return;
+          }
+
           const signal = await cognition.recall(npc.id, visitorId, topic);
 
           // already learned (a self/peer belief about this topic) or deep distrust → deterministic refusal
@@ -291,9 +331,14 @@ export async function startServer(opts: { port?: number } = {}) {
             if (root) receipts.storage++;
           }
 
-          // social demo: A-Bao warns Keeper Liu of this scam (they share the Market)
-          let warned = false;
-          if (npc.id === 'npc:0gtown:abao') warned = await cognition.warn('npc:0gtown:abao', 'npc:0gtown:liu', topic);
+          // social demo: warn the whole guild (best-effort), one town.warn per warned member
+          const warnedMembers: string[] = [];
+          for (const g of guildIds) {
+            if (g === npc.id) continue;
+            let ok = false;
+            try { ok = await cognition.warn(npc.id, g, topic); } catch { /* best-effort */ }
+            if (ok) warnedMembers.push(g);
+          }
 
           sendJson({
             type: 'pitched', npc: npc.name, accepted: true, protected: false, belief,
@@ -319,10 +364,27 @@ export async function startServer(opts: { port?: number } = {}) {
             rec.event('town.belief', { actor: npc.id, by: 'npc', data: { topic, belief, source: 'self' } });
             const tv = await trust.get(npc.id, visitorId);   // value already updated by learn()
             rec.event('town.trust', { actor: npc.id, target: visitorId, by: 'npc', data: { peer: visitorId, delta: -0.3, value: tv } });
-            if (warned) {
-              rec.event('town.warn', { actor: 'npc:0gtown:abao', target: 'npc:0gtown:liu', by: 'npc', data: { from: 'npc:0gtown:abao', to: 'npc:0gtown:liu', topic, accepted: true } });
+            for (const g of warnedMembers) {
+              rec.event('town.warn', { actor: npc.id, target: g, by: 'npc', data: { from: npc.id, to: g, topic, accepted: true } });
             }
             rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
+            rec.flush();
+          } catch (e: any) {
+            console.warn('[0gtown] replay write skipped:', e?.message);
+          }
+
+          // the guild votes whether to ban this visitor (belief-gated, synchronous)
+          try {
+            const round = await runSanctionVote(cognition, polity, npc.id, visitorId, topic, guildIds, { until: Infinity });
+            if (round) {
+              rec.tick(++replayT);
+              rec.event('town.propose', { actor: npc.id, target: visitorId, by: 'npc', data: { proposer: npc.id, target: visitorId, topic, pid: round.pid } });
+              for (const [voter, choice] of Object.entries(round.votes)) {
+                if (voter === npc.id) continue;   // proposer's implicit 'for' isn't a cast vote
+                rec.event('town.vote', { actor: voter, target: visitorId, by: 'npc', data: { voter, choice, pid: round.pid } });
+              }
+              rec.event('town.sanction', { actor: npc.id, target: visitorId, by: 'engine', data: { target: visitorId, passed: round.result.passed, shareFor: round.result.shareFor } });
+            }
             rec.flush();
           } catch (e: any) {
             console.warn('[0gtown] replay write skipped:', e?.message);
