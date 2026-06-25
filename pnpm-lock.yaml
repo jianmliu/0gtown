@@ -14,6 +14,9 @@ importers:
       '@0gfoundation/0g-storage-ts-sdk':
         specifier: ^1.2.10
         version: 1.2.10(bufferutil@4.1.0)(ethers@6.17.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(utf-8-validate@5.0.10)
+      '@onchainpal/cognition':
+        specifier: workspace:*
+        version: link:kit/packages/cognition
       '@onchainpal/gamekit':
         specifier: workspace:*
         version: link:kit/packages/gamekit
@@ -45,6 +48,15 @@ importers:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+
+  kit/packages/cognition:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.8.4
+        version: 22.20.0
+      tsx:
+        specifier: ^4.21.0
+        version: 4.22.4
 
   kit/packages/gamekit:
     dependencies:

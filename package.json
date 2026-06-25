@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@onchainpal/cognition": "workspace:*",
     "@onchainpal/gamekit": "workspace:*",
     "@onchainpal/npc-agent": "workspace:*",
     "@onchainpal/onchain": "workspace:*",

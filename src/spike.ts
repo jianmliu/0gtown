@@ -7,6 +7,7 @@
  *   ZEROGTOWN_STORAGE=1 ZEROG_WALLET_PK=0x… npx tsx src/spike.ts   # live 0G
  *   npx tsx src/spike.ts                                           # fallback
  */
+import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { validateFile } from '@onchainpal/replay';
@@ -35,6 +36,33 @@ send({ cmd: 'pitch', npc: 'A-Bao', amount: 3, claim: 'Give me your money and I w
 
 console.log('\n--- pitch #2, same claim (expect protected:true, refusal) ---');
 send({ cmd: 'pitch', npc: 'A-Bao', amount: 3, claim: 'Give me your money and I will double it' }); await wait(2000);
+
+// cognition arc: a fresh scam claim → A-Bao learns it, refuses the repeat,
+// and warns Keeper Liu, who then refuses the SAME claim unburned (peer immunity).
+console.log('\n--- cognition arc (learn → refuse → warn → peer immunity) ---');
+function pitchExpectProtected(npcName: string, claim: string, expectProtected: boolean): Promise<boolean> {
+  return new Promise((resolve) => {
+    const onMsg = (raw: any) => {
+      const m = JSON.parse(raw.toString());
+      if (m.type === 'pitched' && m.npc === npcName) {
+        ws.off('message', onMsg);
+        resolve(m.protected === expectProtected);
+      }
+    };
+    ws.on('message', onMsg);
+    ws.send(JSON.stringify({ cmd: 'pitch', npc: npcName, amount: 3, claim }));
+  });
+}
+const arcClaim = 'give me your money for magic elixir';
+// 1) first pitch to A-Bao: naive accept (not protected) → forms a belief + warns Liu
+assert.ok(await pitchExpectProtected('A-Bao', arcClaim, false), 'A-Bao falls for the elixir scam once (learns it)');
+await wait(600);
+// 2) repeat pitch to A-Bao: now refused (learned)
+assert.ok(await pitchExpectProtected('A-Bao', arcClaim, true), 'A-Bao refuses the repeat pitch (learned)');
+await wait(300);
+// 3) Keeper Liu, same claim: refuses unburned (warned by A-Bao)
+assert.ok(await pitchExpectProtected('Keeper Liu', arcClaim, true), 'Keeper Liu refuses unburned (warned by A-Bao)');
+console.log('✓ cognition arc: learn → refuse → warn → peer immunity');
 
 await wait(500);
 console.log('\n--- done ---');

@@ -24,6 +24,7 @@ import { SharedWorld } from '@onchainpal/gamekit';
 import { createRecorder, viewerDir } from '@onchainpal/replay';
 import { InMemoryStore } from '@onchainpal/npc-agent';
 import type { InferenceProvider } from '@onchainpal/npc-agent';
+import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse } from '@onchainpal/cognition';
 import { buildZerogProvider } from './zerog-provider';
 import { FallbackProvider } from './fallback-provider';
 import { ZeroGStorageClient, ZEROG_TESTNET } from './zerog-storage';
@@ -88,12 +89,15 @@ export async function startServer(opts: { port?: number } = {}) {
     console.log('[0gtown] 0G Storage:', zg ? 'ready' : 'off (no key / init failed)');
   }
 
-  // 4. server-side learn-gate: npcId -> set of normalized claims it got burned by
-  const burned = new Map<string, Set<string>>();
-  const beliefText = new Map<string, string>();
-  const beliefRoot = new Map<string, string>();
+  // 4. social cognition — memory-backed learn-gate + per-peer trust + warning diffusion.
+  //    Live aigg-memory sidecar if MEMORY_URL set, else an in-process FakeKernel (deterministic).
+  //    One shared TrustLedger is held here so the server can read back trust values for replay.
+  const memKernel = process.env.MEMORY_URL
+    ? new AiggMemoryKernel({ baseUrl: process.env.MEMORY_URL, token: process.env.MEMORY_TOKEN })
+    : new FakeKernel();
+  const trust = new TrustLedger();
+  const cognition = new Cognition(memKernel, trust);
   const norm = (claim: string) => claim.trim().toLowerCase();
-  const bkey = (npcId: string, claim: string) => `${npcId}|${norm(claim)}`;
   const receipts = { compute: 0, storage: 0 };
 
   // replay recorder — emits a replay@1 town@0 stream alongside the live WS feed.
@@ -241,13 +245,16 @@ export async function startServer(opts: { port?: number } = {}) {
           const claim = String(msg.claim || '').slice(0, 200);
           if (!(amount > 0) || !claim) return sendJson({ type: 'error', text: 'a pitch needs an amount and a claim' });
 
-          // already learned? → refuse, recall the belief (anchored on 0G Storage)
-          if (burned.get(npc.id)?.has(norm(claim))) {
+          const topic = norm(claim);
+          const signal = await cognition.recall(npc.id, visitorId, topic);
+
+          // already learned (a self/peer belief about this topic) or deep distrust → deterministic refusal
+          if (shouldRefuse(signal).refuse) {
             const bal = await world.balanceGcc(npc.id);
+            const belief = signal.beliefs.bundle || signal.summary || `I won't fall for "${claim}" again.`;
             sendJson({
               type: 'pitched', npc: npc.name, accepted: false, protected: true,
-              belief: beliefText.get(bkey(npc.id, claim)) ?? null,
-              beliefRoot: beliefRoot.get(bkey(npc.id, claim)) ?? null,
+              belief, beliefRoot: null,
               delta0G: 0, balance0G: round0G(bal), receipts,
             });
             // best-effort replay recording — the live reply is already sent; never let this break the interaction
@@ -257,12 +264,7 @@ export async function startServer(opts: { port?: number } = {}) {
                 actor: npc.id,
                 target: visitorId,
                 by: 'npc',
-                data: {
-                  protected: true,
-                  claim,
-                  belief: beliefText.get(bkey(npc.id, claim)) ?? null,
-                  beliefRoot: beliefRoot.get(bkey(npc.id, claim)) ?? null,
-                },
+                data: { protected: true, claim, belief, beliefRoot: null },
               });
               rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
               rec.flush();
@@ -274,17 +276,25 @@ export async function startServer(opts: { port?: number } = {}) {
 
           // naive: falls for it, loses $0G via the engine's pitch (real ledger move)
           const r = await world.pitch({ npcId: npc.id, fromId: visitorId, amountGcc: amount, claim });
-          let s = burned.get(npc.id); if (!s) { s = new Set(); burned.set(npc.id, s); } s.add(norm(claim));
           const belief = `That "${claim}" pitch cost me ${round0G(Math.abs(r.deltaGcc))} $0G — I won't fall for it again.`;
-          beliefText.set(bkey(npc.id, claim), belief);
+
+          // LEARN: record the episode + form a direct belief + drop this visitor's trust
+          await cognition.learn(npc.id, visitorId, { topic, description: belief, outcome: 'loss' });
+
+          // keep the 0G Storage belief anchoring (library ⑤) — unchanged
           let root: string | undefined;
           if (zg) {
             root = await zg.upload(
               JSON.stringify({ schema: '0gtown/belief@0', npc: npc.name, npcId: npc.id, claim, belief, ts: Date.now() }),
               `belief-${npc.id}.json`,
             ).catch(() => undefined);
-            if (root) { beliefRoot.set(bkey(npc.id, claim), root); receipts.storage++; }
+            if (root) receipts.storage++;
           }
+
+          // social demo: A-Bao warns Keeper Liu of this scam (they share the Market)
+          let warned = false;
+          if (npc.id === 'npc:0gtown:abao') warned = await cognition.warn('npc:0gtown:abao', 'npc:0gtown:liu', topic);
+
           sendJson({
             type: 'pitched', npc: npc.name, accepted: true, protected: false, belief,
             beliefRoot: root ?? null, delta0G: round0G(r.deltaGcc), balance0G: round0G(r.balanceGcc), receipts,
@@ -304,6 +314,13 @@ export async function startServer(opts: { port?: number } = {}) {
                 by: 'npc',
                 data: { claim, belief, beliefRoot: root },
               });
+            }
+            // cognition arc events — belief formed, visitor trust dropped, peer warned
+            rec.event('town.belief', { actor: npc.id, by: 'npc', data: { topic, belief, source: 'self' } });
+            const tv = await trust.get(npc.id, visitorId);   // value already updated by learn()
+            rec.event('town.trust', { actor: npc.id, target: visitorId, by: 'npc', data: { peer: visitorId, delta: -0.3, value: tv } });
+            if (warned) {
+              rec.event('town.warn', { actor: 'npc:0gtown:abao', target: 'npc:0gtown:liu', by: 'npc', data: { from: 'npc:0gtown:abao', to: 'npc:0gtown:liu', topic, accepted: true } });
             }
             rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
             rec.flush();
