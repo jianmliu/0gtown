@@ -200,12 +200,15 @@ button:disabled{ opacity:.4; cursor:not-allowed }
 <script>
 const $=s=>document.querySelector(s);
 const SCAM={amount:3, claim:'Give me your money and I will double it'};
-const ROLE={ 'npc:0gtown:abao':'noodle-stall owner · trusting', 'npc:0gtown:liu':'teahouse keeper · shrewd' };
+const ROLE={ 'npc:0gtown:abao':'noodle-stall owner · trusting', 'npc:0gtown:liu':'teahouse keeper · shrewd', 'npc:0gtown:mei':'fishmonger · wary', 'npc:0gtown:guo':'fruit-seller · trusting', 'npc:0gtown:han':'cloth-merchant · measured' };
 const role=id=>ROLE[id]||'townsfolk';
 // hand-inked stall emblems
 const ICON={
   'npc:0gtown:abao':'<svg viewBox="0 0 32 32"><path d="M5 14h22M7 14a9 9 0 0 0 18 0"/><path d="M9 14l1 6a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3l1-6"/><path d="M13 9c0-2 1-3 0-5M16 8c0-2 1-3 0-5M19 9c0-2 1-3 0-5"/></svg>',
-  'npc:0gtown:liu':'<svg viewBox="0 0 32 32"><path d="M8 16h12a4 4 0 0 1 0 8H10a4 4 0 0 1-4-4v-2a2 2 0 0 1 2-2z"/><path d="M20 18h3a3 3 0 0 1 0 6h-2"/><path d="M9 12c-1-2 1-3 0-5M14 12c-1-2 1-3 0-5"/><path d="M6 24h16"/></svg>'
+  'npc:0gtown:liu':'<svg viewBox="0 0 32 32"><path d="M8 16h12a4 4 0 0 1 0 8H10a4 4 0 0 1-4-4v-2a2 2 0 0 1 2-2z"/><path d="M20 18h3a3 3 0 0 1 0 6h-2"/><path d="M9 12c-1-2 1-3 0-5M14 12c-1-2 1-3 0-5"/><path d="M6 24h16"/></svg>',
+  'npc:0gtown:mei':'<svg viewBox="0 0 32 32"><path d="M5 16c5-7 14-7 19 0-5 7-14 7-19 0z"/><path d="M24 16l4-4v8l-4-4z"/><circle cx="11" cy="15" r="1.2"/><path d="M14 12c1-2 3-3 5-3M14 20c1 2 3 3 5 3"/></svg>',
+  'npc:0gtown:guo':'<svg viewBox="0 0 32 32"><path d="M16 11c-5 0-8 4-8 9a7 7 0 0 0 16 0c0-5-3-9-8-9z"/><path d="M16 11c0-3 2-5 5-5M16 11c0-2-1-3-3-4"/></svg>',
+  'npc:0gtown:han':'<svg viewBox="0 0 32 32"><path d="M6 9h20v6H6z"/><path d="M6 9v14a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V9"/><path d="M11 9v17M21 9v17M16 15v11"/></svg>'
 };
 const icon=id=>ICON[id]||'<svg viewBox="0 0 32 32"><circle cx="16" cy="12" r="6"/><path d="M6 27a10 10 0 0 1 20 0"/></svg>';
 
