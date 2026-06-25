@@ -33,6 +33,10 @@ The reusable heart is the **rap sheet** — a public misconduct ledger that **ge
 - Info-selling, alliances → cut.
 - The library owning balances or a clock (Approach B/the tick model — rejected).
 
+### Revisions from the design audit (2026-06-25)
+
+A code-grounded review against the shipped ②a/②b code + the real server confirmed areas 1/2/4/6 hold (the `learn → offender-scoped belief → topic-matched recall` chain fires line-by-line; `runRapSanction` reuses `Polity` correctly; the replay change is the known 4-site cost), and corrected: **(BLOCKER)** the world has **no NPC→arbitrary-id $0G transfer** (`gccKey` NPC-only; `pitch` destroys money; `donate`/`fund` only top up) → lending is **server-side bookkeeping**, the lender's world balance is NOT debited (§7); **(2)** the server has **no `ws.on('close')` handler** → the on-disconnect settlement must be added and fully try/caught, with a per-connection `now` counter; **(3)** the rap-gated ban reads **only `rapSheet.has`** — the `learn`-written belief/trust are not consumed by it (don't wire a belief-read into the ban); **(4)** `runRapSanction`'s payload now carries `topic` for viewer parity; **(5)** `settle` clamps `paid` and the smoke must assert no double-default; **(6)** `recordMisconduct` takes no `TrustLedger` (learn moves trust once).
+
 ---
 
 ## 2. Chosen approach
@@ -85,8 +89,9 @@ export class LoanBook {
   lend(lender: string, borrower: string, opts: { principal: number; rate?: number; term?: number }, now: number): Loan;
     //   records a loan due at now+term (rate default 0.1, term default a host constant); host moves the $0G
   settle(now: number, balanceOf: (id: string) => number): Settlement[];
-    //   for each loan with due <= now: owed = principal*(1+rate); paid = min(owed, balanceOf(borrower));
-    //   defaulted = paid < owed; removes settled loans; host applies the transfers from the returned list
+    //   for each loan with due <= now: owed = principal*(1+rate); paid = Math.max(0, min(owed, balanceOf(borrower)));
+    //   defaulted = paid < owed; REMOVES settled loans (a loan can't settle/default twice); host applies the
+    //   returned transfers. Precondition: balanceOf returns ≥ 0 (the Math.max(0,…) is a defensive clamp).
   due(now: number): Loan[];                            // matured-but-unsettled (for the host to know there's work)
 }
 ```
@@ -130,7 +135,8 @@ export async function runRapSanction(
   opts?: { until?: number },
 ): Promise<{ pid: string; result: TallyResult; votes: Record<string, Choice> } | null> {
   if (!rapSheet.has(offender)) return null;
-  const pid = polity.submit(proposer, 'sanction', { target: offender, until: opts?.until ?? Infinity });
+  // include topic in the payload for replay/viewer parity with ②b's runSanctionVote (the viewer reads d.topic on town.propose)
+  const pid = polity.submit(proposer, 'sanction', { target: offender, until: opts?.until ?? Infinity, topic: misconductTopic(offender) });
   const votes: Record<string, Choice> = { [proposer]: 'for' };
   for (const m of guild) {
     if (m === proposer) continue;
@@ -140,18 +146,20 @@ export async function runRapSanction(
   return { pid, result: polity.tally(pid, guild), votes };
 }
 ```
-Note: `recordMisconduct` relies on ②a `learn`'s existing behavior (writes an offender-scoped belief + drops the victim's trust toward the offender via `TRUST_DELTAS.scammed`). `trust` is accepted in the signature for symmetry/future use but `learn` already moves it; the implementation must NOT double-apply.
+Note: `recordMisconduct` relies on ②a `learn`'s existing behavior (writes an offender-scoped belief whose `match` contains the topic, and drops the victim's trust toward the offender via `TRUST_DELTAS.scammed`). It takes **no** `TrustLedger` param — `Cognition` already owns the one shared ledger and `learn` moves it; a second param would invite a double-apply. The host must NOT separately call `trust.update` for the same event (in 0gtown the shared `trust` is read-only after `learn`).
+
+**The rap-gated ban reads ONLY `rapSheet.has(offender)` — it does NOT read the belief/trust `learn` wrote.** Those exist for symmetry with a scam, the victim NPC's own future memory, the `society.smoke` assertion, and the *optional* per-voter `voteBeliefGated`/`runSanctionVote` deliberation path. So `runRapSanction` bans correctly even against an empty-memory FakeKernel — do not wire a belief-read into the ban path.
 
 ---
 
 ## 7. 0gtown integration ("both") — the deadbeat cascade
 
-- **Per-visitor state**: a minimal server map for visitor $0G balances + the `LoanBook` (visitors currently have no balance). A borrowed amount credits the visitor; repayment/forfeit debits it.
-- **`borrow` WS command** (new): `{ cmd:'borrow', npc, amount }` → if the lender NPC has the funds, `loanBook.lend(npcId, visitorId, { principal: amount }, now)`, move `amount` $0G NPC→visitor, reply `{ type:'lent', npc, amount, due }`, record `town.lend`. (A wealthy stall — Cloth-merchant Han — is the natural lender.)
-- **Settlement trigger** (clock-agnostic): the server advances a per-visitor interaction counter as `now`; on the visitor's NEXT action after a loan's `due` (or on disconnect), it calls `loanBook.settle(now, balanceOf)`. A `defaulted` settlement → `recordMisconduct(cognition, rapSheet, lender, visitorId, 'default', now)` → `runRapSanction(rapSheet, polity, lender, visitorId, guildIds, { until: Infinity })` → if passed, the visitor is blacklisted. (For the spike, settlement is triggered deterministically; see §8.)
-- **Sanction-first** (extend ②b): the existing `polity.sanctioned(visitorId)` short-circuit is added to the `borrow` handler too (and already guards `pitch`), so a banned deadbeat is refused everywhere.
-- **Replay** (extend `town@0` again — same 4-site additive change): `town.lend` (`data:{ lender, borrower, amount, due }`), `town.default` (`data:{ lender, borrower, owed, recovered }`), `town.rap` (`data:{ offender, kind, victim }`); reuse `town.propose`/`vote`/`sanction` for the ban. Update `town-pack.smoke` deepEqual + the viewer.
-- Governance/cognition blocks wrapped best-effort so a failure never breaks the live reply.
+- **⚠️ Money is tracked SERVER-SIDE — the world exposes no NPC→arbitrary-id transfer.** Audit finding: `SharedWorld`'s `gccKey` is NPC-only, `pitch` *destroys* the moved $0G (it doesn't credit anyone), and `donate`/`fund` only top up — there is **no** `transfer`/`debit`/`setGcc` for a `player:visitor:N` recipient. So lending CANNOT move the world's $0G. ②c-1 keeps a small **server-side `LoanBook`** (and, if desired, a `Map<visitorId, number>` for narrative visitor balance); the lender NPC's **world balance is NOT debited** — the loan is server-side bookkeeping. (Cosmetic gap: the room snapshot still shows Han's full balance. Acceptable for ②c-1; a real $0G debit would need a new `SharedWorld.transferGcc` primitive, out of scope.)
+- **`borrow` WS command** (new): `{ cmd:'borrow', npc, amount }` → `loanBook.lend(npcId, visitorId, { principal: amount }, now)` (records the loan, due `now+term`; **`term` default = 1**, so the loan matures on the visitor's NEXT interaction — see settlement), reply `{ type:'lent', npc, amount, due }`, record `town.lend`. A wealthy stall (Cloth-merchant Han) is the natural lender. (The handler also runs the sanction-first check below.)
+- **Settlement trigger** (clock-agnostic): add a **per-connection `let now = 0`** counter incremented on each message. On every visitor action (and in a new `ws.on('close')` handler — **the server has none today, it must be added**, fully `try/caught` since the peer may be gone), call `loanBook.settle(now, balanceOf)` where **`balanceOf(visitorId)` returns the visitor's repayment escrow, defaulting to 0** (a deadbeat who never sent a `repay` → balance 0 → `owed > 0` → full default). A `defaulted` settlement → `recordMisconduct(cognition, rapSheet, lender, visitorId, 'default', now)` (rap entry + `town.rap`) + `town.default` → `runRapSanction(rapSheet, polity, lender, visitorId, guildIds, { until: Infinity })` (emit `town.propose`/`vote`/`sanction`) → if passed, the visitor is blacklisted. (A `repay` command is out of scope for ②c-1 — the demo's visitor is always a deadbeat; balanceOf is simply 0.)
+- **Sanction-first** (extend ②b): copy the existing `pitch` `polity.sanctioned(visitorId)` short-circuit (server.ts ~265) into the `borrow` handler, so a banned deadbeat is refused everywhere. (`sanctioned` is called with no `now` ⇒ default 0; `until:Infinity > 0` ⇒ stays banned.)
+- **Replay** (extend `town@0` again — same 4-site additive change): add `town.lend` (`data:{ lender, borrower, amount, due }`), `town.default` (`data:{ lender, borrower, owed, recovered }`), `town.rap` (`data:{ offender, kind, victim }`) to `eventKinds`; update the exact `town-pack.smoke.ts:19` `deepEqual` atomically; extend `viewer-core.js` `townLedger` + `viewer.js`. Add light validators (matching the `town.vote`/`town.sanction` style): `town.default` requires numeric `owed`+`recovered`; `town.rap` requires non-empty `offender`+`kind`. Reuse `town.propose`/`vote`/`sanction` for the ban.
+- Governance/cognition/recorder blocks wrapped best-effort so a failure never breaks the live reply; the `ws.on('close')` settlement is fully `try/caught`.
 
 ---
 
@@ -159,7 +167,7 @@ Note: `recordMisconduct` relies on ②a `learn`'s existing behavior (writes an o
 
 - `RapSheet`/`LoanBook` are pure (no I/O, no throw). `recordMisconduct`/`runRapSanction` are best-effort via `recall`/`learn` (non-throwing); `Polity` is pure. The 0gtown blocks are try/caught beside the recorder emits.
 - **`rapsheet.smoke`**: record/has/count/entries; clean offender → `has` false, `count` 0.
-- **`lending.smoke`**: `lend` records a loan due at `now+term`; `settle` when `balanceOf(borrower) ≥ owed` → `repaid` (defaulted:false, paid=owed); when short → `defaulted:true, paid=balance`; settled loans removed; loans before `due` untouched; `due(now)` lists matured.
+- **`lending.smoke`**: `lend` records a loan due at `now+term` (default `term=1`, `rate=0.1`); `settle` when `balanceOf(borrower) ≥ owed` → `repaid` (defaulted:false, paid=owed); when short → `defaulted:true, paid=clamp(balance)`; **a second `settle(now+…)` returns `[]` for the already-settled loan (no double-default)**; loans before `due` untouched; `due(now)` lists matured. `settle` must clamp `paid = Math.max(0, min(owed, balanceOf))` (defensive; `balanceOf ≥ 0` is the documented precondition).
 - **`society.smoke`** (FakeKernel + `Cognition`/`TrustLedger`/`Polity` + a synthetic guild): `recordMisconduct` writes a rap entry, drops victim→offender trust, and makes a later `recall(victim, offender, topic).discernment.q > 0`; `misconductTopic` is offender-scoped/stable; `runRapSanction` returns null for a clean offender and passes (all 'for') once a rap exists → `polity.sanctioned(offender)` true.
 - **0gtown spike extension** (fresh WS connection, per the ②b lesson — a defaulting visitor gets banned, so use a clean visitor): visitor borrows from Han → (no repay) → trigger settlement → `town.default` → guild bans → assert a follow-up `borrow`/`pitch` from that visitor is refused (`bannedByGuild`/sanctioned); assert the replay stream contains `town.lend`/`town.default`/`town.rap`/`town.sanction` and `validateRun`s.
 
