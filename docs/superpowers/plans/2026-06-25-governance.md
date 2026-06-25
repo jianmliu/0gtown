@@ -583,11 +583,14 @@ try {
 
 After the warn loop (still in the accepted-pitch branch, after the existing `town.belief`/`town.trust` emits), add:
 
+> **Note (defect found during implementation):** the preceding accepted-pitch block ends with `rec.flush()`, which closes the current tick (`recorder.ts` `flushTick()` nulls `cur`). So the FIRST governance `rec.event(...)` would throw "event() called before tick()". Fix: open a fresh tick at the start of the `if (round)` branch with `rec.tick(++replayT)` (shown below). If `round` is null, the trailing `rec.flush()` is a harmless no-op.
+
 ```ts
 // the guild votes whether to ban this visitor (belief-gated, synchronous)
 try {
   const round = await runSanctionVote(cognition, polity, npc.id, visitorId, topic, guildIds, { until: Infinity });
   if (round) {
+    rec.tick(++replayT);   // the prior block flushed the tick; reopen one for the governance events
     rec.event('town.propose', { actor: npc.id, target: visitorId, by: 'npc', data: { proposer: npc.id, target: visitorId, topic, pid: round.pid } });
     for (const [voter, choice] of Object.entries(round.votes)) {
       if (voter === npc.id) continue;   // proposer's implicit 'for' isn't a cast vote
@@ -606,11 +609,17 @@ Expected: clean. Fix any identifier mismatches against the real handler from Ste
 
 - [ ] **Step 8: Extend `src/spike.ts` to assert the guild-ban cascade**
 
-The ②a spike already pitches A-Bao (accept), repeat-pitches A-Bao (expect protected), and pitches Keeper Liu (expect protected). With governance, the first A-Bao scam now warns the guild and runs a sanction vote that PASSES (5/5), so the visitor is banned session-wide. Add, after the existing cognition-arc assertions and before the replay-validation block: pitch the SAME claim to a third guild NPC (Fishmonger Mei) and expect a protected (guild-banned) refusal. Reuse the spike's existing `pitchExpectProtected(npcName, claim)` helper:
+> **Note (defect found during implementation):** with governance on, the marquee's first scam (`player:visitor:1`) bans that visitor **guild-wide**, so the later cognition-arc pitch (which expects A-Bao to *accept*) would hit the ban and fail. Fix: run the cognition+governance arc on a **fresh second WS connection** (`ws2`), which the server assigns a distinct visitor id (`player:visitor:${++seq}`), so it isn't pre-banned. The existing cognition-arc assertions still hold on the fresh visitor (its first pitch ACCEPTS; governance then bans it, so the repeat/Liu pitches return `protected:true` via the ban). Parameterize the pitch helper to take a socket (`pitchExpectProtectedOn(sock, npcName, claim, expectProtected)`).
+
+Open `ws2` (mirror how the spike opens its first socket + awaits hello/open), run the cognition-arc assertions on it, then add the guild-ban + replay-event assertions. Close `ws2` before the end so the spike exits 0.
 
 ```ts
-assert.ok(await pitchExpectProtected('Fishmonger Mei', claim), 'a third guild NPC refuses the banned visitor (guild sanction)');
+const ws2 = new WebSocket(`ws://localhost:${PORT}/play`);   // fresh visitor (player:visitor:2)
+await new Promise<void>((res) => ws2.on('open', () => res()));
+// ... run the cognition-arc assertions on ws2 via pitchExpectProtectedOn(ws2, ...) ...
+assert.ok(await pitchExpectProtectedOn(ws2, 'Fishmonger Mei', claim, true), 'a guild NPC refuses the banned visitor (guild sanction)');
 console.log('✓ governance arc: scam → guild warned → vote → visitor banned guild-wide');
+ws2.close();
 ```
 
 Then extend the existing replay event-kind assertion block to also require the governance kinds. Find where the spike checks `kinds.has('town.belief')` etc. and add:
