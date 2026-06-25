@@ -86,6 +86,9 @@ try {
   if (!kinds.has('town.talk')) throw new Error('expected a town.talk event');
   if (!kinds.has('town.pitch')) throw new Error('expected a town.pitch event');
   if (!kinds.has('town.refuse')) throw new Error('expected a town.refuse on the repeat pitch');
+  for (const k of ['town.belief', 'town.warn', 'town.trust']) {
+    if (!kinds.has(k)) { console.error(`expected a ${k} event in the replay stream`); process.exit(1); }
+  }
   console.log(`✓ replay stream ${latest} validates; events: ${[...kinds].join(', ')}`);
 } catch (e: any) {
   console.error(e?.message || e);
