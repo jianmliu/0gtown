@@ -31,6 +31,10 @@ One scam cascades into a collective ban: scammer pitches A-Bao → A-Bao burns �
 - Crime/alliances/lending (②c).
 - A tick clock inside the Polity (rejected — clock-agnostic by design).
 
+### Revisions from the design audit (2026-06-25)
+
+A code-grounded review against the real `govern.py` + the shipped ②a code confirmed the core cascade (warn → social belief → belief-gated 'for' vote) **fires line-by-line in shipped code**, and corrected the spec: (1) the sanction enactor restores `Math.max(...)` so finite-`until` reuse can't shorten an active blacklist (the `govern.py:88-93` invariant); (2) the belief gate is **topic-scoped, not visitor-scoped** — `recall` ignores `target` for discernment — so the honest model is "ban a visitor for using a known-scam *claim*," with a documented false-positive vector (§5), not an "exact" per-scammer ban; (3) the 0gtown wiring must generalize the **hardcoded `town.warn` replay emit** (not just the warn call), keep `protected:true`+`claim` on the guild-ban refusal (the `town.refuse` validator requires them), and verify the **browser client** renders N NPCs; (4) `Polity` has no internal blacklist prune (host responsibility; `sanctioned()` is correct without it).
+
 ---
 
 ## 2. Chosen approach
@@ -93,8 +97,9 @@ export class Polity {
 }
 ```
 
-- **Built-in `sanction` enactment**: `blacklist.set(payload.target, payload.until ?? Infinity)`. Returns `{ target, until }`. 0gtown bans for the session (`until = Infinity` ⇒ `sanctioned` always true); monopoly would pass `until = opened + window + K` and check against a tick `now`.
+- **Built-in `sanction` enactment**: `blacklist.set(target, Math.max(blacklist.get(target) ?? -Infinity, payload.until ?? Infinity))`. Returns `{ target, until }`. The `Math.max` is load-bearing for finite-`until` reuse: it preserves `govern.py`'s invariant (a later-enacted, earlier-opened proposal must never *shorten* an active blacklist and open a re-offend gap — the `max()` at `govern.py:88-93`). 0gtown bans for the session (`until = Infinity` ⇒ always sanctioned); monopoly would pass `until = opened + window + K` and check against a tick `now`.
 - **Pluggable enactors**: an unknown `ptype` with no registered enactor returns `effect: undefined` (passed proposal with a no-op effect) — never throws.
+- **No internal prune.** `tally` is a faithful substitute for `step`'s tally half (`govern.py:55-63`), but does **not** prune expired blacklist entries (`govern.py:53`). `sanctioned(target, now)` is still correct without pruning (the `> now` check returns false for expired entries); pruning is the host's responsibility (for 0gtown's `Infinity` bans it would be dead code). An optional `prune(now)` MAY be added if a finite-`until` host needs bounded memory — out of scope for ②b.
 - `Polity` is **pure** (in-memory maps, no I/O) and clock-agnostic: `until`/`now` are opaque numbers the host interprets.
 
 ---
@@ -125,7 +130,9 @@ export async function runSanctionVote(
 
 - `voteBeliefGated` calls `cognition.recall(voter, target, topic)`; votes `'for'` when `discernment.q > 0` (the voter learned the scam directly **or** was warned — ②a's warning diffuses exactly this social belief) **or** `trust < trustFloor` (the directly-scammed proposer). Else `'against'`.
 - `runSanctionVote` is the 0gtown entry point: gate on the proposer's own belief, `submit('sanction', { target, until })`, then for each `guild` member (excluding the proposer) `cast(pid, member, await voteBeliefGated(...))`, then `tally(pid, guild)`. Synchronous — no clock.
-- **The belief is keyed by `topic` (the normalized scam claim), not the visitor** — consistent with ②a's `learn(npc, visitor, {topic})`. The proposal payload carries `{ target: visitorId, topic }`; the gate reads the voter's belief about that `topic` plus their trust in the visitor. For 0gtown (one scammer, one claim) this is exact; the design note documents the coupling.
+- **The sanction is TOPIC-scoped, not visitor-scoped — and that is the honest semantics, not "exact."** Read `recall` (`cognition.ts:24-26`): it computes `discernment` over `corpusPath(voter)` and `topic`, and uses `target` *only* for `trust.get(voter, target)`. So the `discernment.q > 0` arm of `voteBeliefGated` answers **"does the voter recognize this scam *claim*?"** — independent of which visitor is named. The model ②b actually delivers is **"the guild bans a visitor for using a claim it knows is a scam,"** not "the guild bans this specific scammer by identity." The proposal payload still carries `{ target: visitorId, topic }` and the enforcement blacklists the visitor id, but the *vote* is driven by the claim.
+  - **Documented false-positive vector**: a *different, innocent* visitor who later pitches the **same normalized claim string** would also be voted-for-ban by the guild (neutral-trust members fire on the topic arm; the `trust < floor` arm doesn't save them because they have no prior interaction with that visitor). This is acceptable for ②a/②b's deterministic, one-scammer demo and is an honest property of a claim-scoped reputation system, but it MUST be stated, not hidden behind "exact."
+  - The directly-scammed **proposer** is the one with a per-visitor signal: it holds *both* the topic belief (faculty) *and* distrust of this specific visitor (`trust < floor`), which is why it proposes. The guild corroborates on the claim. A future visitor-scoped tightening (diffuse distrust along with the warning, or require proposer distrust) is possible but is a ②a change, out of scope here.
 
 ---
 
@@ -133,11 +140,12 @@ export async function runSanctionVote(
 
 - **Enrich `TOWNSFOLK`** (src/server.ts) from 2 → ~5 stall NPCs — A-Bao, Keeper Liu, plus ~3 more (e.g. a fishmonger, a fruit-seller, a cloth-merchant), each with a `background` persona, all created in `ROOM`. The full set is the "night-market guild" (`guildIds = TOWNSFOLK.map(t => t.id)`).
 - A `const polity = new Polity()` at startup, beside the `cognition`/`trust` setup.
-- **Sanction-first in the pitch handler**: before the per-NPC `recall`/`shouldRefuse`, check `polity.sanctioned(visitorId)` — a banned visitor's pitch is refused outright with a guild-ban message (and a `town.refuse` recorded with a `bannedByGuild` flag in `data`).
-- **The cascade on a successful scam** (accepted pitch / burn): keep ②a's `learn`; **generalize the warn step to warn the whole guild** (not just A-Bao→Liu) — `for (const g of guildIds) if (g !== npc.id) await cognition.warn(npc.id, g, topic)`. Then run governance:
+- **Sanction-first in the pitch handler**: before the per-NPC `recall`/`shouldRefuse` (i.e. before `server.ts:249`), check `polity.sanctioned(visitorId)` — a banned visitor's pitch is refused outright. **The refusal's `sendJson` + `town.refuse` recorder event MUST keep `protected:true` and a `claim`** (the shipped `town.refuse` validator at `town.ts:18-21` requires both, or `validateRun` fails); the guild-ban marker goes in `data` *additively* as `bannedByGuild:true` — it does not replace `protected`/`claim`.
+- **The cascade on a successful scam** (accepted pitch / burn): keep ②a's `learn`; **generalize the warn step to warn the whole guild** — replace the hardcoded `if (npc.id === 'npc:0gtown:abao') warned = await cognition.warn('npc:0gtown:abao','npc:0gtown:liu', topic)` with `for (const g of guildIds) if (g !== npc.id) await cognition.warn(npc.id, g, topic)`. **The hardcoded replay `town.warn` emit (`server.ts:322-324`, also `abao→liu`) must be generalized in the SAME edit** — emit one `town.warn` per actually-warned guild member (`from: npc.id, to: g`), or the replay misreports who warned whom. Ordering: `warn` must run AFTER `learn` (warn's `diffuseWarning` requires the warner to already hold the `faculty` belief that `learn` wrote). Then run governance:
   `const round = await runSanctionVote(cognition, polity, npc.id, visitorId, topic, guildIds, { until: Infinity })`.
   If `round?.result.passed`, the visitor is now blacklisted.
-- **Replay** (extend the `town@0` pack again): `town.propose` (`data:{ proposer, target, topic, pid }`), `town.vote` (`data:{ voter, choice, pid }`), `town.sanction` (`data:{ target, passed, shareFor }`). Emit them best-effort beside the existing recorder calls. The viewer gains a "Guild" section (proposals → votes → ban outcome).
+- **Replay** (extend the `town@0` pack again — the same 4-site additive change ②a made): (1) add `town.propose`/`town.vote`/`town.sanction` to `townPack.eventKinds`; (2) update the shipped exact `deepEqual` in `town-pack.smoke.ts:19` atomically; (3) add reduce cases in `viewer/viewer-core.js` `townLedger`; (4) render a "Guild" section in `viewer/viewer.js`. Event shapes: `town.propose` (`data:{ proposer, target, topic, pid }`), `town.vote` (`data:{ voter, choice, pid }`), `town.sanction` (`data:{ target, passed, shareFor }`). Emit best-effort beside the existing recorder calls.
+- **Frontend check** (`public/index.html`): the server side (`roomSnapshot`/`findNpc`/`replayEntities`) already auto-scales to N NPCs, but the browser client may hardcode 2 NPC cards. The plan must verify/adjust the client so it renders all ~5 guild NPCs (and surfaces the ban).
 - All governance calls are wrapped best-effort so a failure never breaks the live pitch reply.
 
 ---
