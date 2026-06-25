@@ -24,7 +24,7 @@ import { SharedWorld } from '@onchainpal/gamekit';
 import { createRecorder, viewerDir } from '@onchainpal/replay';
 import { InMemoryStore } from '@onchainpal/npc-agent';
 import type { InferenceProvider } from '@onchainpal/npc-agent';
-import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction } from '@onchainpal/cognition';
+import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction, misconductTopic } from '@onchainpal/cognition';
 import { buildZerogProvider } from './zerog-provider';
 import { FallbackProvider } from './fallback-provider';
 import { ZeroGStorageClient, ZEROG_TESTNET } from './zerog-storage';
@@ -153,7 +153,7 @@ export async function startServer(opts: { port?: number } = {}) {
         rec.event('town.rap', { actor: s.borrower, by: 'engine', data: { offender: s.borrower, kind: 'default', victim: s.lender } });
         const round = await runRapSanction(rapSheet, polity, s.lender, s.borrower, guildIds, { until: Infinity });
         if (round) {
-          rec.event('town.propose', { actor: s.lender, target: s.borrower, by: 'npc', data: { proposer: s.lender, target: s.borrower, topic: `misconduct-${s.borrower}`, pid: round.pid } });
+          rec.event('town.propose', { actor: s.lender, target: s.borrower, by: 'npc', data: { proposer: s.lender, target: s.borrower, topic: misconductTopic(s.borrower), pid: round.pid } });
           for (const [voter, choice] of Object.entries(round.votes)) {
             if (voter === s.lender) continue;
             rec.event('town.vote', { actor: voter, target: s.borrower, by: 'npc', data: { voter, choice, pid: round.pid } });
