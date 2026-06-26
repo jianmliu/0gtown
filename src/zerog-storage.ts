@@ -12,7 +12,7 @@
  * imported so the SDK is OPTIONAL — fromConfig() only needs it when actually
  * talking to 0G. The ZeroGTransport seam keeps the class unit-testable offline.
  */
-import type { AutoDriveClient } from '@onchainpal/npc-agent';
+import type { AutoDriveClient } from '@aigg/npc-agent';
 
 /** the minimal byte-level seam — real = 0G SDK; fake = content-addressed in-memory. */
 export interface ZeroGTransport {

@@ -1,8 +1,8 @@
-# @onchainpal/replay Implementation Plan
+# @aigg/replay Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a unified, pack-extensible replay library (`@onchainpal/replay`) in the kit, and wire it into 0gtown so the night-market learn-loop emits a conformant `replay@1` JSONL stream viewable in a pack-aware browser viewer.
+**Goal:** Build a unified, pack-extensible replay library (`@aigg/replay`) in the kit, and wire it into 0gtown so the night-market learn-loop emits a conformant `replay@1` JSONL stream viewable in a pack-aware browser viewer.
 
 **Architecture:** A minimal domain-neutral core (`run`/`tick`/`summary` JSONL) plus a Pack Registry. Domain worlds register packs (`town@0` for 0gtown, `econ@0` specified as a stub) that declare event kinds, validation invariants, and viewer panel descriptors. The recorder, validator, and viewer all consult the same registry — adding a world never touches the core. Full design: [docs/superpowers/specs/2026-06-24-replay-library-design.md](2026-06-24-replay-library-design.md) (in 0gtown).
 
@@ -19,14 +19,14 @@
 
 Task 1 creates a working branch in **both** repos. Tasks 2–10 commit inside `kit/`. Task 11 commits in 0gtown. Task 12 bumps the submodule pointer in 0gtown.
 
-All `pnpm` commands run from the 0gtown repo root unless stated. Filter syntax: `pnpm --filter @onchainpal/replay <script>`.
+All `pnpm` commands run from the 0gtown repo root unless stated. Filter syntax: `pnpm --filter @aigg/replay <script>`.
 
 ---
 
 ## File Structure
 
 **Kit submodule — new package `kit/packages/replay/`:**
-- `package.json` — `@onchainpal/replay`, ESM, `test:*` scripts (tsx smoke runners)
+- `package.json` — `@aigg/replay`, ESM, `test:*` scripts (tsx smoke runners)
 - `tsconfig.json` — extends `../../tsconfig.base.json`, `include: ["src"]`
 - `src/schema.ts` — core types (`Entity`, `RunHeader`, `Event`, `Tick`, `Summary`) + `ReplayPack`/`PanelSpec`/`ValidateCtx` interfaces + `SCHEMA_ID`
 - `src/packs/core.ts` — built-in `core@0` pack (`move`/`say` + entity-graph panel)
@@ -43,16 +43,16 @@ All `pnpm` commands run from the 0gtown repo root unless stated. Filter syntax: 
 - `fixtures/0gtown-sample.jsonl` — town@0 fixture
 - `README.md`
 
-**Edited in kit:** `kit/tsconfig.base.json` (add `@onchainpal/replay` path mapping).
+**Edited in kit:** `kit/tsconfig.base.json` (add `@aigg/replay` path mapping).
 
 **0gtown repo — edited:**
-- `package.json` — add `"@onchainpal/replay": "workspace:*"`
+- `package.json` — add `"@aigg/replay": "workspace:*"`
 - `src/server.ts` — instantiate recorder, emit events beside each WS send, serve `/replay/`
 - `src/spike.ts` — record during the marquee loop, assert town events + `validateRun`
 
 ---
 
-### Task 1: Scaffold the `@onchainpal/replay` package
+### Task 1: Scaffold the `@aigg/replay` package
 
 **Files:**
 - Create branch in kit submodule and 0gtown
@@ -75,7 +75,7 @@ Expected: kit now on `replay-library`; 0gtown already on `replay-library` (creat
 
 ```json
 {
-  "name": "@onchainpal/replay",
+  "name": "@aigg/replay",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -114,17 +114,17 @@ Expected: kit now on `replay-library`; 0gtown already on `replay-library` (creat
 
 - [ ] **Step 4: Add the path mapping in `kit/tsconfig.base.json`**
 
-In the `compilerOptions.paths` object (alongside the existing `@onchainpal/gamekit` entries), add:
+In the `compilerOptions.paths` object (alongside the existing `@aigg/gamekit` entries), add:
 
 ```json
-      "@onchainpal/replay": ["packages/replay/src/index.ts"],
-      "@onchainpal/replay/*": ["packages/replay/src/*"]
+      "@aigg/replay": ["packages/replay/src/index.ts"],
+      "@aigg/replay/*": ["packages/replay/src/*"]
 ```
 
 - [ ] **Step 5: Write the temporary barrel `kit/packages/replay/src/index.ts`**
 
 ```ts
-export const PACKAGE = '@onchainpal/replay';
+export const PACKAGE = '@aigg/replay';
 ```
 
 - [ ] **Step 6: Write the scaffold smoke `kit/packages/replay/src/__tests__/scaffold.smoke.ts`**
@@ -132,23 +132,23 @@ export const PACKAGE = '@onchainpal/replay';
 ```ts
 /**
  * Scaffold smoke — proves the package resolves and runs under tsx.
- * Run: pnpm --filter @onchainpal/replay test:scaffold
+ * Run: pnpm --filter @aigg/replay test:scaffold
  */
 import assert from 'node:assert/strict';
 import { PACKAGE } from '../index';
 
-assert.equal(PACKAGE, '@onchainpal/replay', 'barrel resolves');
+assert.equal(PACKAGE, '@aigg/replay', 'barrel resolves');
 console.log('ALL SCAFFOLD SMOKE TESTS PASSED ✅');
 ```
 
 - [ ] **Step 7: Link the new workspace package**
 
 Run: `pnpm install`
-Expected: pnpm picks up `@onchainpal/replay` under the `kit/packages/*` glob; no errors.
+Expected: pnpm picks up `@aigg/replay` under the `kit/packages/*` glob; no errors.
 
 - [ ] **Step 8: Run the scaffold smoke**
 
-Run: `pnpm --filter @onchainpal/replay test:scaffold`
+Run: `pnpm --filter @aigg/replay test:scaffold`
 Expected: `ALL SCAFFOLD SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 9: Commit (in the kit submodule)**
@@ -156,7 +156,7 @@ Expected: `ALL SCAFFOLD SMOKE TESTS PASSED ✅`
 ```bash
 cd /Volumes/T7-Data/aigg-0gtown/kit
 git add packages/replay tsconfig.base.json
-git commit -m "feat(replay): scaffold @onchainpal/replay package"
+git commit -m "feat(replay): scaffold @aigg/replay package"
 cd /Volumes/T7-Data/aigg-0gtown
 ```
 
@@ -256,7 +256,7 @@ export interface ReplayPack {
 
 - [ ] **Step 2: Typecheck the kit**
 
-Run: `pnpm --filter @onchainpal/replay exec tsc --noEmit`
+Run: `pnpm --filter @aigg/replay exec tsc --noEmit`
 Expected: no errors (types compile).
 
 - [ ] **Step 3: Commit (in the kit submodule)**
@@ -312,7 +312,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 ```ts
 /**
  * Smoke for the town@0 pack's validation invariants.
- * Run: pnpm --filter @onchainpal/replay test:town
+ * Run: pnpm --filter @aigg/replay test:town
  */
 import assert from 'node:assert/strict';
 import type { Event, ValidateCtx, RunHeader } from '../schema';
@@ -352,7 +352,7 @@ console.log('ALL TOWN-PACK SMOKE TESTS PASSED ✅');
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @onchainpal/replay test:town`
+Run: `pnpm --filter @aigg/replay test:town`
 Expected: FAIL — `Cannot find module '../packs/town'`.
 
 - [ ] **Step 3: Write `kit/packages/replay/src/packs/town.ts`**
@@ -392,7 +392,7 @@ export const townPack: ReplayPack = {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm --filter @onchainpal/replay test:town`
+Run: `pnpm --filter @aigg/replay test:town`
 Expected: `ALL TOWN-PACK SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Commit (in the kit submodule)**
@@ -418,7 +418,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 /**
  * Smoke for the econ@0 stub pack — proves the neutral core can name the
  * pumptown/replay@0 event vocabulary. Full validation is deferred (monopoly's cycle).
- * Run: pnpm --filter @onchainpal/replay test:econ
+ * Run: pnpm --filter @aigg/replay test:econ
  */
 import assert from 'node:assert/strict';
 import { econPack, ECON_PACK_ID } from '../packs/econ';
@@ -436,7 +436,7 @@ console.log('ALL ECON-PACK SMOKE TESTS PASSED ✅');
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @onchainpal/replay test:econ`
+Run: `pnpm --filter @aigg/replay test:econ`
 Expected: FAIL — `Cannot find module '../packs/econ'`.
 
 - [ ] **Step 3: Write `kit/packages/replay/src/packs/econ.ts`**
@@ -468,7 +468,7 @@ export const econPack: ReplayPack = {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm --filter @onchainpal/replay test:econ`
+Run: `pnpm --filter @aigg/replay test:econ`
 Expected: `ALL ECON-PACK SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Commit (in the kit submodule)**
@@ -493,7 +493,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 ```ts
 /**
  * Smoke for PackRegistry + defaultRegistry.
- * Run: pnpm --filter @onchainpal/replay test:registry
+ * Run: pnpm --filter @aigg/replay test:registry
  */
 import assert from 'node:assert/strict';
 import { PackRegistry, defaultRegistry } from '../registry';
@@ -522,7 +522,7 @@ console.log('ALL REGISTRY SMOKE TESTS PASSED ✅');
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @onchainpal/replay test:registry`
+Run: `pnpm --filter @aigg/replay test:registry`
 Expected: FAIL — `Cannot find module '../registry'`.
 
 - [ ] **Step 3: Write `kit/packages/replay/src/registry.ts`**
@@ -565,7 +565,7 @@ export function defaultRegistry(): PackRegistry {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm --filter @onchainpal/replay test:registry`
+Run: `pnpm --filter @aigg/replay test:registry`
 Expected: `ALL REGISTRY SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Commit (in the kit submodule)**
@@ -590,7 +590,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 ```ts
 /**
  * Smoke for validateRun — core invariants + pack validation.
- * Run: pnpm --filter @onchainpal/replay test:validate
+ * Run: pnpm --filter @aigg/replay test:validate
  */
 import assert from 'node:assert/strict';
 import { validateRun } from '../validate';
@@ -650,7 +650,7 @@ console.log('ALL VALIDATE SMOKE TESTS PASSED ✅');
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @onchainpal/replay test:validate`
+Run: `pnpm --filter @aigg/replay test:validate`
 Expected: FAIL — `Cannot find module '../validate'`.
 
 - [ ] **Step 3: Write `kit/packages/replay/src/validate.ts`**
@@ -726,7 +726,7 @@ export function validateFile(path: string, registry?: PackRegistry): ValidateRes
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm --filter @onchainpal/replay test:validate`
+Run: `pnpm --filter @aigg/replay test:validate`
 Expected: `ALL VALIDATE SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Commit (in the kit submodule)**
@@ -752,7 +752,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 ```ts
 /**
  * Smoke for createRecorder — roundtrip emit → validateRun ok, and guardrails.
- * Run: pnpm --filter @onchainpal/replay test:recorder
+ * Run: pnpm --filter @aigg/replay test:recorder
  */
 import assert from 'node:assert/strict';
 import { createRecorder } from '../recorder';
@@ -796,7 +796,7 @@ console.log('ALL RECORDER SMOKE TESTS PASSED ✅');
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @onchainpal/replay test:recorder`
+Run: `pnpm --filter @aigg/replay test:recorder`
 Expected: FAIL — `Cannot find module '../recorder'`.
 
 - [ ] **Step 3: Write `kit/packages/replay/src/assets.ts`**
@@ -897,7 +897,7 @@ export function createRecorder(opts: RecorderOpts): Recorder {
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `pnpm --filter @onchainpal/replay test:recorder`
+Run: `pnpm --filter @aigg/replay test:recorder`
 Expected: `ALL RECORDER SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 6: Commit (in the kit submodule)**
@@ -922,7 +922,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 
 ```ts
 /**
- * @onchainpal/replay — unified, pack-extensible replay.
+ * @aigg/replay — unified, pack-extensible replay.
  * A domain-neutral core (replay@1) + a Pack Registry. Worlds register packs;
  * the recorder, validator, and viewer all consult the same registry.
  */
@@ -955,7 +955,7 @@ Each line is one JSON object (no blank lines):
 ```ts
 /**
  * Smoke — the shipped fixture must validate, guarding the schema contract.
- * Run: pnpm --filter @onchainpal/replay test:fixture
+ * Run: pnpm --filter @aigg/replay test:fixture
  */
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
@@ -969,12 +969,12 @@ console.log('ALL FIXTURE SMOKE TESTS PASSED ✅');
 
 - [ ] **Step 4: Run the fixture test**
 
-Run: `pnpm --filter @onchainpal/replay test:fixture`
+Run: `pnpm --filter @aigg/replay test:fixture`
 Expected: `ALL FIXTURE SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Run the full kit replay suite + typecheck**
 
-Run: `pnpm --filter @onchainpal/replay run test:scaffold && pnpm --filter @onchainpal/replay run test:registry && pnpm --filter @onchainpal/replay run test:town && pnpm --filter @onchainpal/replay run test:econ && pnpm --filter @onchainpal/replay run test:validate && pnpm --filter @onchainpal/replay run test:recorder && pnpm --filter @onchainpal/replay run test:fixture && pnpm --filter @onchainpal/replay exec tsc --noEmit`
+Run: `pnpm --filter @aigg/replay run test:scaffold && pnpm --filter @aigg/replay run test:registry && pnpm --filter @aigg/replay run test:town && pnpm --filter @aigg/replay run test:econ && pnpm --filter @aigg/replay run test:validate && pnpm --filter @aigg/replay run test:recorder && pnpm --filter @aigg/replay run test:fixture && pnpm --filter @aigg/replay exec tsc --noEmit`
 Expected: every smoke prints its PASS banner; tsc reports no errors.
 
 - [ ] **Step 6: Commit (in the kit submodule)**
@@ -1007,7 +1007,7 @@ the TS pack specs and the viewer's JS render functions. Pure logic lives in
 ```ts
 /**
  * Smoke for the viewer's pure core (parse + panel selection + town ledger model).
- * Run: pnpm --filter @onchainpal/replay test:viewer
+ * Run: pnpm --filter @aigg/replay test:viewer
  */
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
@@ -1051,7 +1051,7 @@ console.log('ALL VIEWER-CORE SMOKE TESTS PASSED ✅');
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @onchainpal/replay test:viewer`
+Run: `pnpm --filter @aigg/replay test:viewer`
 Expected: FAIL — cannot find `../../viewer/viewer-core.js`.
 
 - [ ] **Step 3: Write `kit/packages/replay/viewer/viewer-core.js`**
@@ -1119,7 +1119,7 @@ export function townLedger(run) {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm --filter @onchainpal/replay test:viewer`
+Run: `pnpm --filter @aigg/replay test:viewer`
 Expected: `ALL VIEWER-CORE SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Write `kit/packages/replay/viewer/viewer.css`**
@@ -1299,20 +1299,20 @@ Expected: shows the HTTP server creation, the WS send sites for `hello`/`talked`
 In the `dependencies` block, add (alongside the other `@onchainpal/*` entries):
 
 ```json
-    "@onchainpal/replay": "workspace:*",
+    "@aigg/replay": "workspace:*",
 ```
 
 - [ ] **Step 3: Link it**
 
 Run: `pnpm install`
-Expected: `@onchainpal/replay` linked into the 0gtown root; no errors.
+Expected: `@aigg/replay` linked into the 0gtown root; no errors.
 
 - [ ] **Step 4: Import the recorder + viewer assets in `src/server.ts`**
 
 Add to the import block near the other `@onchainpal/*` imports:
 
 ```ts
-import { createRecorder, viewerDir } from '@onchainpal/replay';
+import { createRecorder, viewerDir } from '@aigg/replay';
 import { readFileSync as fsRead } from 'node:fs';
 import { join as pathJoin, extname } from 'node:path';
 ```
@@ -1461,7 +1461,7 @@ its existing loop completes, add a verification that the run file conforms and c
 the expected town events. Append before the script's final success log:
 
 ```ts
-import { validateFile } from '@onchainpal/replay';
+import { validateFile } from '@aigg/replay';
 import { readdirSync } from 'node:fs';
 
 // newest run file written this session
@@ -1505,7 +1505,7 @@ git commit -m "feat: 0gtown emits a replay@1 town stream + serves the replay vie
 - [ ] **Step 1: Write `kit/packages/replay/README.md`**
 
 ````markdown
-# @onchainpal/replay
+# @aigg/replay
 
 Unified, pack-extensible replay for the ai.gg family. A domain-neutral core
 (`replay@1`) plus a Pack Registry: a world registers a pack, and the recorder,
@@ -1521,7 +1521,7 @@ validator, and viewer all consult the same registry — the core never changes.
 ## Use
 
 ```ts
-import { createRecorder, validateFile } from '@onchainpal/replay';
+import { createRecorder, validateFile } from '@aigg/replay';
 
 const rec = createRecorder({ path: 'runs/run.jsonl', packs: ['town@0'] });
 rec.run({ runId, entities, map, meta });
@@ -1541,7 +1541,7 @@ up their panels; unknown packs degrade to core-only.
 
 ## Tests
 
-`pnpm --filter @onchainpal/replay test:scaffold|registry|town|econ|validate|recorder|fixture|viewer`
+`pnpm --filter @aigg/replay test:scaffold|registry|town|econ|validate|recorder|fixture|viewer`
 ````
 
 - [ ] **Step 2: Commit the README (in the kit submodule)**
@@ -1555,7 +1555,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 
 - [ ] **Step 3: Run the full kit replay suite one more time**
 
-Run: `for s in scaffold registry town econ validate recorder fixture viewer; do pnpm --filter @onchainpal/replay run test:$s || break; done`
+Run: `for s in scaffold registry town econ validate recorder fixture viewer; do pnpm --filter @aigg/replay run test:$s || break; done`
 Expected: eight PASS banners, no break.
 
 - [ ] **Step 4: Bump the submodule pointer in 0gtown**
@@ -1563,7 +1563,7 @@ Expected: eight PASS banners, no break.
 ```bash
 cd /Volumes/T7-Data/aigg-0gtown
 git add kit
-git commit -m "chore: bump kit submodule — @onchainpal/replay library"
+git commit -m "chore: bump kit submodule — @aigg/replay library"
 ```
 
 - [ ] **Step 5: Final end-to-end verification**

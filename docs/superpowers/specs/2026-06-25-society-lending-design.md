@@ -1,4 +1,4 @@
-# Design: `@onchainpal/cognition` ②c-1 — misconduct layer (rap sheet + lending/default)
+# Design: `@aigg/cognition` ②c-1 — misconduct layer (rap sheet + lending/default)
 
 **Date:** 2026-06-25
 **Status:** Approved design, ready for implementation plan
@@ -10,7 +10,7 @@
 
 ## 1. Background & motivation
 
-Sub-project **②c-1** of `@onchainpal/cognition` (see [[kit-extraction-initiative]]; ② = ②a cognition+social → ②b governance → ②c society). ②c (monopoly's `society.py`) covers crime / lending / info-selling / alliances; the user scoped it to the **professional-misconduct layer** and then split it: **②c-1 (this spec) = rap sheet + lending/default**; **②c-2 (later) = crime (extort/sabotage)**. Info-selling and alliances are cut.
+Sub-project **②c-1** of `@aigg/cognition` (see [[kit-extraction-initiative]]; ② = ②a cognition+social → ②b governance → ②c society). ②c (monopoly's `society.py`) covers crime / lending / info-selling / alliances; the user scoped it to the **professional-misconduct layer** and then split it: **②c-1 (this spec) = rap sheet + lending/default**; **②c-2 (later) = crime (extort/sabotage)**. Info-selling and alliances are cut.
 
 The reusable heart is the **rap sheet** — a public misconduct ledger that **generalizes ②b's grounds for a sanction** from "used a known-scam claim" to "has a misconduct record." ②c-1 produces misconduct records (loan defaults); ②b's collective sanction then bans on them.
 

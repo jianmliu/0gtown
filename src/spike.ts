@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { validateFile } from '@onchainpal/replay';
+import { validateFile } from '@aigg/replay';
 import { startServer } from './server';
 
 const PORT = 8190;

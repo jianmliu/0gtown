@@ -1,8 +1,8 @@
-# @onchainpal/cognition ②c-1 — misconduct layer (rap sheet + lending) Implementation Plan
+# @aigg/cognition ②c-1 — misconduct layer (rap sheet + lending) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a misconduct layer to `@onchainpal/cognition` — a pure `RapSheet` + `LoanBook` and a `misconduct.ts` bridge composing the shipped ②a `Cognition` and ②b `Polity` — wired into 0gtown so a deadbeat visitor who borrows and never repays earns a rap sheet and is collectively banned by the guild.
+**Goal:** Add a misconduct layer to `@aigg/cognition` — a pure `RapSheet` + `LoanBook` and a `misconduct.ts` bridge composing the shipped ②a `Cognition` and ②b `Polity` — wired into 0gtown so a deadbeat visitor who borrows and never repays earns a rap sheet and is collectively banned by the guild.
 
 **Architecture:** A new pure `society/` module (RapSheet, LoanBook records+settlement; the host owns balances and triggers maturity — clock-agnostic, like ②b). `misconduct.ts` is the only ②a/②b-aware code: `recordMisconduct` writes the ②a signal + a rap entry; `runRapSanction` runs the ②b collective ban on the **public** rap sheet. Full design: [docs/superpowers/specs/2026-06-25-society-lending-design.md](2026-06-25-society-lending-design.md).
 
@@ -77,7 +77,7 @@ In `"scripts"`, after `"test:governance"`, add:
 - [ ] **Step 3: Write the failing test `kit/packages/cognition/src/__tests__/rapsheet.smoke.ts`**
 
 ```ts
-/** Smoke for RapSheet. Run: pnpm --filter @onchainpal/cognition test:rapsheet */
+/** Smoke for RapSheet. Run: pnpm --filter @aigg/cognition test:rapsheet */
 import assert from 'node:assert/strict';
 import { RapSheet } from '../society/rapsheet';
 
@@ -100,7 +100,7 @@ console.log('ALL RAPSHEET SMOKE TESTS PASSED ✅');
 
 - [ ] **Step 4: Run it to verify it fails**
 
-Run: `pnpm --filter @onchainpal/cognition test:rapsheet`
+Run: `pnpm --filter @aigg/cognition test:rapsheet`
 Expected: FAIL — `Cannot find module '../society/rapsheet'`.
 
 - [ ] **Step 5: Write `kit/packages/cognition/src/society/rapsheet.ts`**
@@ -126,7 +126,7 @@ export class RapSheet {
 
 - [ ] **Step 6: Run it to verify it passes**
 
-Run: `pnpm --filter @onchainpal/cognition test:rapsheet`
+Run: `pnpm --filter @aigg/cognition test:rapsheet`
 Expected: `ALL RAPSHEET SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 7: Commit (in the kit submodule)**
@@ -149,7 +149,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 - [ ] **Step 1: Write the failing test `kit/packages/cognition/src/__tests__/lending.smoke.ts`**
 
 ```ts
-/** Smoke for LoanBook. Run: pnpm --filter @onchainpal/cognition test:lending */
+/** Smoke for LoanBook. Run: pnpm --filter @aigg/cognition test:lending */
 import assert from 'node:assert/strict';
 import { LoanBook } from '../society/lending';
 
@@ -191,7 +191,7 @@ console.log('ALL LENDING SMOKE TESTS PASSED ✅');
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm --filter @onchainpal/cognition test:lending`
+Run: `pnpm --filter @aigg/cognition test:lending`
 Expected: FAIL — `Cannot find module '../society/lending'`.
 
 - [ ] **Step 3: Write `kit/packages/cognition/src/society/lending.ts`**
@@ -237,7 +237,7 @@ export class LoanBook {
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `pnpm --filter @onchainpal/cognition test:lending`
+Run: `pnpm --filter @aigg/cognition test:lending`
 Expected: `ALL LENDING SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Commit (in the kit submodule)**
@@ -262,7 +262,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 
 ```ts
 /** Smoke for the misconduct bridge (composes ②a Cognition + ②b Polity).
- *  Run: pnpm --filter @onchainpal/cognition test:society */
+ *  Run: pnpm --filter @aigg/cognition test:society */
 import assert from 'node:assert/strict';
 import { FakeKernel } from '../kernel/fake';
 import { TrustLedger, TRUST_DELTAS } from '../social/trust';
@@ -308,7 +308,7 @@ main().catch((e) => { console.error('SOCIETY SMOKE FAILED ❌', e); process.exit
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm --filter @onchainpal/cognition test:society`
+Run: `pnpm --filter @aigg/cognition test:society`
 Expected: FAIL — `Cannot find module '../society/misconduct'`.
 
 - [ ] **Step 3: Write `kit/packages/cognition/src/society/misconduct.ts`**
@@ -359,7 +359,7 @@ export async function runRapSanction(
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `pnpm --filter @onchainpal/cognition test:society`
+Run: `pnpm --filter @aigg/cognition test:society`
 Expected: `ALL SOCIETY SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Re-export from the barrel `kit/packages/cognition/src/index.ts`**
@@ -376,7 +376,7 @@ export { misconductTopic, recordMisconduct, runRapSanction } from './society/mis
 
 - [ ] **Step 6: Full cognition suite + typecheck**
 
-Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg polity governance rapsheet lending society; do pnpm --filter @onchainpal/cognition run test:$s || break; done && pnpm --filter @onchainpal/cognition exec tsc --noEmit`
+Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg polity governance rapsheet lending society; do pnpm --filter @aigg/cognition run test:$s || break; done && pnpm --filter @aigg/cognition exec tsc --noEmit`
 Expected: 13 PASS banners; tsc clean.
 
 - [ ] **Step 7: Commit (in the kit submodule)**
@@ -435,7 +435,7 @@ assert.ok(errs({ kind: 'town.rap', data: { offender: 'visitor:1' } }).length > 0
 
 - [ ] **Step 3: Run the town-pack smoke**
 
-Run: `pnpm --filter @onchainpal/replay test:town`
+Run: `pnpm --filter @aigg/replay test:town`
 Expected: `ALL TOWN-PACK SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 4: Surface the events in `kit/packages/replay/viewer/viewer-core.js` `townLedger`**
@@ -479,7 +479,7 @@ In the `'town-ledger'` renderer, after the guild section loop, add:
 
 - [ ] **Step 6: Re-run the replay suite**
 
-Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in town validate recorder fixture viewer; do pnpm --filter @onchainpal/replay run test:$s || break; done`
+Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in town validate recorder fixture viewer; do pnpm --filter @aigg/replay run test:$s || break; done`
 Expected: each prints its PASS banner. (`viewer-core.smoke` still passes — `townLedger` returns an extra `credit` key, which its existing assertions don't forbid.)
 
 - [ ] **Step 7: Commit (in the kit submodule)**
@@ -508,10 +508,10 @@ Expected: where `cognition`/`trust`/`polity`/`guildIds` are constructed; the `ws
 
 - [ ] **Step 2: Construct `RapSheet`/`LoanBook` + a global `now`, and import them**
 
-Add `RapSheet, LoanBook, recordMisconduct, runRapSanction` to the existing `@onchainpal/cognition` import:
+Add `RapSheet, LoanBook, recordMisconduct, runRapSanction` to the existing `@aigg/cognition` import:
 
 ```ts
-import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction } from '@onchainpal/cognition';
+import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction } from '@aigg/cognition';
 ```
 
 Where `polity`/`guildIds` are constructed, add:
@@ -648,7 +648,7 @@ git commit -m "feat: 0gtown deadbeat cascade — borrow, default, rap sheet, gui
 
 - [ ] **Step 1: Run the full kit suites (cognition + replay)**
 
-Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg polity governance rapsheet lending society; do pnpm --filter @onchainpal/cognition run test:$s || break; done && for s in town validate recorder fixture viewer; do pnpm --filter @onchainpal/replay run test:$s || break; done`
+Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg polity governance rapsheet lending society; do pnpm --filter @aigg/cognition run test:$s || break; done && for s in town validate recorder fixture viewer; do pnpm --filter @aigg/replay run test:$s || break; done`
 Expected: all PASS banners, no break.
 
 - [ ] **Step 2: Bump the kit submodule pointer (0gtown repo)**
@@ -657,7 +657,7 @@ Expected: all PASS banners, no break.
 cd /Volumes/T7-Data/aigg-0gtown/kit && git log --oneline -1   # note the society HEAD
 cd /Volumes/T7-Data/aigg-0gtown
 git add kit
-git commit -m "chore: bump kit submodule — @onchainpal/cognition ②c-1 misconduct + replay lend/default/rap"
+git commit -m "chore: bump kit submodule — @aigg/cognition ②c-1 misconduct + replay lend/default/rap"
 ```
 
 - [ ] **Step 3: Final end-to-end**

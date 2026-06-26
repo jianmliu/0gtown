@@ -1,8 +1,8 @@
-# @onchainpal/cognition ②a Implementation Plan
+# @aigg/cognition ②a Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build `@onchainpal/cognition` ②a — a memory→belief→reflection loop over the external aigg-memory service via a `MemoryKernel` port, plus per-peer **trust** and **warning diffusion**, wired into 0gtown so A-Bao learns a scam and warns Keeper Liu (who then refuses it unburned).
+**Goal:** Build `@aigg/cognition` ②a — a memory→belief→reflection loop over the external aigg-memory service via a `MemoryKernel` port, plus per-peer **trust** and **warning diffusion**, wired into 0gtown so A-Bao learns a scam and warns Keeper Liu (who then refuses it unburned).
 
 **Architecture:** A new low-level kit package, mostly pure TS: a `MemoryKernel` port with two adapters (`AiggMemoryKernel` HTTP / `FakeKernel` in-memory), a pure `TrustLedger`, `diffuseWarning`, a belief `gate`, and a `Cognition` orchestrator with `recall` (pre) / `learn` (post) / `warn` hooks. Hosts wire it around their existing LLM call. Full design: [docs/superpowers/specs/2026-06-24-cognition-social-design.md](2026-06-24-cognition-social-design.md).
 
@@ -49,7 +49,7 @@
 
 ---
 
-### Task 1: Scaffold the `@onchainpal/cognition` package
+### Task 1: Scaffold the `@aigg/cognition` package
 
 **Files:**
 - Branch the kit submodule
@@ -68,7 +68,7 @@ Expected: kit now on `cognition-social`, branched from the replay work.
 
 ```json
 {
-  "name": "@onchainpal/cognition",
+  "name": "@aigg/cognition",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -103,32 +103,32 @@ Expected: kit now on `cognition-social`, branched from the replay work.
 
 - [ ] **Step 4: Add the path mapping in `kit/tsconfig.base.json`**
 
-In `compilerOptions.paths` (next to the `@onchainpal/replay` entries), add:
+In `compilerOptions.paths` (next to the `@aigg/replay` entries), add:
 
 ```json
-      "@onchainpal/cognition": ["packages/cognition/src/index.ts"],
-      "@onchainpal/cognition/*": ["packages/cognition/src/*"]
+      "@aigg/cognition": ["packages/cognition/src/index.ts"],
+      "@aigg/cognition/*": ["packages/cognition/src/*"]
 ```
 
 - [ ] **Step 5: Write the stub `kit/packages/cognition/src/index.ts`**
 
 ```ts
-export const PACKAGE = '@onchainpal/cognition';
+export const PACKAGE = '@aigg/cognition';
 ```
 
 - [ ] **Step 6: Write `kit/packages/cognition/src/__tests__/scaffold.smoke.ts`**
 
 ```ts
-/** Scaffold smoke. Run: pnpm --filter @onchainpal/cognition test:scaffold */
+/** Scaffold smoke. Run: pnpm --filter @aigg/cognition test:scaffold */
 import assert from 'node:assert/strict';
 import { PACKAGE } from '../index';
-assert.equal(PACKAGE, '@onchainpal/cognition', 'barrel resolves');
+assert.equal(PACKAGE, '@aigg/cognition', 'barrel resolves');
 console.log('ALL SCAFFOLD SMOKE TESTS PASSED ✅');
 ```
 
 - [ ] **Step 7: Install + run the scaffold smoke**
 
-Run: `cd /Volumes/T7-Data/aigg-0gtown && pnpm install && pnpm --filter @onchainpal/cognition test:scaffold`
+Run: `cd /Volumes/T7-Data/aigg-0gtown && pnpm install && pnpm --filter @aigg/cognition test:scaffold`
 Expected: `ALL SCAFFOLD SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 8: Commit (in the kit submodule)**
@@ -136,7 +136,7 @@ Expected: `ALL SCAFFOLD SMOKE TESTS PASSED ✅`
 ```bash
 cd /Volumes/T7-Data/aigg-0gtown/kit
 git add packages/cognition tsconfig.base.json
-git commit -m "feat(cognition): scaffold @onchainpal/cognition package"
+git commit -m "feat(cognition): scaffold @aigg/cognition package"
 cd /Volumes/T7-Data/aigg-0gtown
 ```
 
@@ -188,7 +188,7 @@ export interface EpisodeInput {
 - [ ] **Step 2: Write the failing test `kit/packages/cognition/src/__tests__/id.smoke.ts`**
 
 ```ts
-/** Smoke for the canonical id transform. Run: pnpm --filter @onchainpal/cognition test:id */
+/** Smoke for the canonical id transform. Run: pnpm --filter @aigg/cognition test:id */
 import assert from 'node:assert/strict';
 import { corpusId, corpusPath } from '../id';
 
@@ -201,7 +201,7 @@ console.log('ALL ID SMOKE TESTS PASSED ✅');
 
 - [ ] **Step 3: Run it to verify it fails**
 
-Run: `pnpm --filter @onchainpal/cognition test:id`
+Run: `pnpm --filter @aigg/cognition test:id`
 Expected: FAIL — `Cannot find module '../id'`.
 
 - [ ] **Step 4: Write `kit/packages/cognition/src/id.ts`**
@@ -221,7 +221,7 @@ export function corpusPath(npcId: string): string {
 
 - [ ] **Step 5: Run it to verify it passes**
 
-Run: `pnpm --filter @onchainpal/cognition test:id`
+Run: `pnpm --filter @aigg/cognition test:id`
 Expected: `ALL ID SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 6: Commit (in the kit submodule)**
@@ -273,7 +273,7 @@ export class InMemoryKV implements KV {
 
 - [ ] **Step 3: Typecheck**
 
-Run: `pnpm --filter @onchainpal/cognition exec tsc --noEmit`
+Run: `pnpm --filter @aigg/cognition exec tsc --noEmit`
 Expected: clean (no errors). (No dedicated smoke — these are interfaces + a trivial impl exercised by later tasks.)
 
 - [ ] **Step 4: Commit (in the kit submodule)**
@@ -297,7 +297,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 
 ```ts
 /** Smoke for FakeKernel — the hermetic backend the rest of the package tests against.
- *  Run: pnpm --filter @onchainpal/cognition test:fake */
+ *  Run: pnpm --filter @aigg/cognition test:fake */
 import assert from 'node:assert/strict';
 import { FakeKernel } from '../kernel/fake';
 
@@ -339,7 +339,7 @@ main().catch((e) => { console.error('FAKE SMOKE FAILED ❌', e); process.exit(1)
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm --filter @onchainpal/cognition test:fake`
+Run: `pnpm --filter @aigg/cognition test:fake`
 Expected: FAIL — `Cannot find module '../kernel/fake'`.
 
 - [ ] **Step 3: Write `kit/packages/cognition/src/kernel/fake.ts`**
@@ -404,7 +404,7 @@ export class FakeKernel implements MemoryKernel {
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `pnpm --filter @onchainpal/cognition test:fake`
+Run: `pnpm --filter @aigg/cognition test:fake`
 Expected: `ALL FAKE SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Commit (in the kit submodule)**
@@ -427,7 +427,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 - [ ] **Step 1: Write the failing test `kit/packages/cognition/src/__tests__/trust.smoke.ts`**
 
 ```ts
-/** Smoke for TrustLedger. Run: pnpm --filter @onchainpal/cognition test:trust */
+/** Smoke for TrustLedger. Run: pnpm --filter @aigg/cognition test:trust */
 import assert from 'node:assert/strict';
 import { TrustLedger, TRUST_DELTAS } from '../social/trust';
 import { InMemoryKV } from '../kernel/kv';
@@ -464,7 +464,7 @@ main().catch((e) => { console.error('TRUST SMOKE FAILED ❌', e); process.exit(1
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm --filter @onchainpal/cognition test:trust`
+Run: `pnpm --filter @aigg/cognition test:trust`
 Expected: FAIL — `Cannot find module '../social/trust'`.
 
 - [ ] **Step 3: Write `kit/packages/cognition/src/social/trust.ts`**
@@ -498,7 +498,7 @@ export class TrustLedger {
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `pnpm --filter @onchainpal/cognition test:trust`
+Run: `pnpm --filter @aigg/cognition test:trust`
 Expected: `ALL TRUST SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Commit (in the kit submodule)**
@@ -521,7 +521,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 - [ ] **Step 1: Write the failing test `kit/packages/cognition/src/__tests__/warn.smoke.ts`**
 
 ```ts
-/** Smoke for diffuseWarning (trust-gated peer belief implant). Run: pnpm --filter @onchainpal/cognition test:warn */
+/** Smoke for diffuseWarning (trust-gated peer belief implant). Run: pnpm --filter @aigg/cognition test:warn */
 import assert from 'node:assert/strict';
 import { FakeKernel } from '../kernel/fake';
 import { TrustLedger, TRUST_DELTAS } from '../social/trust';
@@ -561,7 +561,7 @@ main().catch((e) => { console.error('WARN SMOKE FAILED ❌', e); process.exit(1)
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm --filter @onchainpal/cognition test:warn`
+Run: `pnpm --filter @aigg/cognition test:warn`
 Expected: FAIL — `Cannot find module '../social/warn'`.
 
 - [ ] **Step 3: Write `kit/packages/cognition/src/social/warn.ts`**
@@ -600,7 +600,7 @@ export async function diffuseWarning(
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `pnpm --filter @onchainpal/cognition test:warn`
+Run: `pnpm --filter @aigg/cognition test:warn`
 Expected: `ALL WARN SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Commit (in the kit submodule)**
@@ -623,7 +623,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 - [ ] **Step 1: Write the failing test `kit/packages/cognition/src/__tests__/gate.smoke.ts`**
 
 ```ts
-/** Smoke for shouldRefuse. Run: pnpm --filter @onchainpal/cognition test:gate */
+/** Smoke for shouldRefuse. Run: pnpm --filter @aigg/cognition test:gate */
 import assert from 'node:assert/strict';
 import { shouldRefuse } from '../gate';
 import type { CognitiveSignal } from '../types';
@@ -642,7 +642,7 @@ console.log('ALL GATE SMOKE TESTS PASSED ✅');
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm --filter @onchainpal/cognition test:gate`
+Run: `pnpm --filter @aigg/cognition test:gate`
 Expected: FAIL — `Cannot find module '../gate'`.
 
 - [ ] **Step 3: Write `kit/packages/cognition/src/gate.ts`**
@@ -666,7 +666,7 @@ export function shouldRefuse(
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `pnpm --filter @onchainpal/cognition test:gate`
+Run: `pnpm --filter @aigg/cognition test:gate`
 Expected: `ALL GATE SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Commit (in the kit submodule)**
@@ -689,7 +689,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 - [ ] **Step 1: Write the failing test `kit/packages/cognition/src/__tests__/cognition.smoke.ts`**
 
 ```ts
-/** Smoke for the Cognition orchestrator. Run: pnpm --filter @onchainpal/cognition test:cognition */
+/** Smoke for the Cognition orchestrator. Run: pnpm --filter @aigg/cognition test:cognition */
 import assert from 'node:assert/strict';
 import { FakeKernel } from '../kernel/fake';
 import { TrustLedger, TRUST_DELTAS } from '../social/trust';
@@ -743,7 +743,7 @@ main().catch((e) => { console.error('COGNITION SMOKE FAILED ❌', e); process.ex
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm --filter @onchainpal/cognition test:cognition`
+Run: `pnpm --filter @aigg/cognition test:cognition`
 Expected: FAIL — `Cannot find module '../cognition'`.
 
 - [ ] **Step 3: Write `kit/packages/cognition/src/cognition.ts`**
@@ -819,7 +819,7 @@ export class Cognition {
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `pnpm --filter @onchainpal/cognition test:cognition`
+Run: `pnpm --filter @aigg/cognition test:cognition`
 Expected: `ALL COGNITION SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Commit (in the kit submodule)**
@@ -845,7 +845,7 @@ The test injects a fake `fetch` (no real server) and asserts the request shapes 
 
 ```ts
 /** Smoke for AiggMemoryKernel — wire-shape correctness via an injected fetch (no server).
- *  Run: pnpm --filter @onchainpal/cognition test:aigg */
+ *  Run: pnpm --filter @aigg/cognition test:aigg */
 import assert from 'node:assert/strict';
 import { AiggMemoryKernel } from '../kernel/aigg';
 
@@ -902,7 +902,7 @@ main().catch((e) => { console.error('AIGG SMOKE FAILED ❌', e); process.exit(1)
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm --filter @onchainpal/cognition test:aigg`
+Run: `pnpm --filter @aigg/cognition test:aigg`
 Expected: FAIL — `Cannot find module '../kernel/aigg'`.
 
 - [ ] **Step 3: Write `kit/packages/cognition/src/kernel/aigg.ts`**
@@ -1011,7 +1011,7 @@ export class AiggMemoryKernel implements MemoryKernel {
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `pnpm --filter @onchainpal/cognition test:aigg`
+Run: `pnpm --filter @aigg/cognition test:aigg`
 Expected: `ALL AIGG SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Commit (in the kit submodule)**
@@ -1034,7 +1034,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 - [ ] **Step 1: Replace `kit/packages/cognition/src/index.ts` with the real barrel**
 
 ```ts
-/** @onchainpal/cognition — agent social cognition over the aigg-memory service.
+/** @aigg/cognition — agent social cognition over the aigg-memory service.
  *  A MemoryKernel port (Aigg/Fake adapters) + per-peer trust + warning diffusion +
  *  a recall/learn/warn orchestrator. Model-free core; reflection is optional. */
 export * from './types';
@@ -1053,7 +1053,7 @@ export { Cognition } from './cognition';
 - [ ] **Step 2: Write `kit/packages/cognition/README.md`**
 
 ````markdown
-# @onchainpal/cognition
+# @aigg/cognition
 
 Agent social cognition over the external [aigg-memory](https://github.com/jianmliu/aigg-memory) service.
 A `MemoryKernel` port (memory→belief→reflection), per-peer **trust**, and **warning
@@ -1073,7 +1073,7 @@ diffusion** — one NPC learns a scam and warns another, who then refuses it unb
 ## Use
 
 ```ts
-import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse } from '@onchainpal/cognition';
+import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse } from '@aigg/cognition';
 
 const kernel = process.env.MEMORY_URL ? new AiggMemoryKernel({ baseUrl: process.env.MEMORY_URL }) : new FakeKernel();
 const cog = new Cognition(kernel, new TrustLedger());
@@ -1089,12 +1089,12 @@ Two invariants (validated against aigg-memory): discernment runs in `mode:'text'
 
 ## Tests
 
-`pnpm --filter @onchainpal/cognition test:{scaffold,id,fake,trust,warn,gate,cognition,aigg}`
+`pnpm --filter @aigg/cognition test:{scaffold,id,fake,trust,warn,gate,cognition,aigg}`
 ````
 
 - [ ] **Step 3: Run the full cognition suite + typecheck**
 
-Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg; do pnpm --filter @onchainpal/cognition run test:$s || break; done && pnpm --filter @onchainpal/cognition exec tsc --noEmit`
+Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg; do pnpm --filter @aigg/cognition run test:$s || break; done && pnpm --filter @aigg/cognition exec tsc --noEmit`
 Expected: eight PASS banners; tsc clean.
 
 - [ ] **Step 4: Commit (in the kit submodule)**
@@ -1135,7 +1135,7 @@ assert.deepEqual(townPack.eventKinds, ['town.talk', 'town.pitch', 'town.refuse',
 
 - [ ] **Step 3: Run the town-pack smoke to confirm it passes**
 
-Run: `pnpm --filter @onchainpal/replay test:town`
+Run: `pnpm --filter @aigg/replay test:town`
 Expected: `ALL TOWN-PACK SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 4: Render warn/trust in `kit/packages/replay/viewer/viewer-core.js`**
@@ -1189,7 +1189,7 @@ And in the per-NPC line, append the warning count — change the existing NPC `r
 
 - [ ] **Step 6: Re-run the viewer-core smoke + full replay suite**
 
-Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in town validate recorder fixture viewer; do pnpm --filter @onchainpal/replay run test:$s || break; done`
+Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in town validate recorder fixture viewer; do pnpm --filter @aigg/replay run test:$s || break; done`
 Expected: each prints its PASS banner. (The `viewer-core` smoke still passes — `townLedger` now returns an extra `warnings` key, which its existing assertions don't forbid.)
 
 - [ ] **Step 7: Commit (in the kit submodule)**
@@ -1222,20 +1222,20 @@ Expected: the `burned`/`beliefText`/`beliefRoot` maps, `norm`, the seeded NPC id
 In `dependencies`, alongside the other `@onchainpal/*` entries, add:
 
 ```json
-    "@onchainpal/cognition": "workspace:*",
+    "@aigg/cognition": "workspace:*",
 ```
 
 - [ ] **Step 3: Link it**
 
 Run: `pnpm install`
-Expected: `@onchainpal/cognition` linked; no errors.
+Expected: `@aigg/cognition` linked; no errors.
 
 - [ ] **Step 4: Import cognition + construct it at startup in `src/server.ts`**
 
 Add to the import block:
 
 ```ts
-import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse } from '@onchainpal/cognition';
+import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse } from '@aigg/cognition';
 ```
 
 Where the server sets up its state (near `receipts`/the recorder), construct cognition (kernel mirrors the live-vs-fallback pattern):
@@ -1366,7 +1366,7 @@ git commit -m "feat: 0gtown cognition — memory-backed refusal, per-visitor tru
 
 - [ ] **Step 1: Run the full kit suites (cognition + replay) one more time**
 
-Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg; do pnpm --filter @onchainpal/cognition run test:$s || break; done && for s in town validate recorder fixture viewer; do pnpm --filter @onchainpal/replay run test:$s || break; done`
+Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg; do pnpm --filter @aigg/cognition run test:$s || break; done && for s in town validate recorder fixture viewer; do pnpm --filter @aigg/replay run test:$s || break; done`
 Expected: all PASS banners, no break.
 
 - [ ] **Step 2: Bump the kit submodule pointer in 0gtown**
@@ -1375,7 +1375,7 @@ Expected: all PASS banners, no break.
 cd /Volumes/T7-Data/aigg-0gtown/kit && git log --oneline -1   # note the cognition-social HEAD
 cd /Volumes/T7-Data/aigg-0gtown
 git add kit
-git commit -m "chore: bump kit submodule — @onchainpal/cognition ②a + replay town events"
+git commit -m "chore: bump kit submodule — @aigg/cognition ②a + replay town events"
 ```
 
 - [ ] **Step 3: Final end-to-end**

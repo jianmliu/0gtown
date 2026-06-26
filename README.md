@@ -68,7 +68,7 @@ Smoke checks: `pnpm spike` (server-side learn loop), `tsx src/live-check.ts` (fu
 
 ```
 browser client  ──ws /play──▶  slim server (src/server.ts)
- (public/index.html)            ├─ @onchainpal/gamekit  SharedWorld.talk/pitch  ← engine submodule
+ (public/index.html)            ├─ @aigg/gamekit  SharedWorld.talk/pitch  ← engine submodule
                                 ├─ ZeroGBrokerProvider  → 0G Compute (TeeML)     ← every NPC thought
                                 └─ ZeroGStorageClient   → 0G Storage             ← every learned belief
 ```

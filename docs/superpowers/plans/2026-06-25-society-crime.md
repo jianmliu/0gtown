@@ -1,8 +1,8 @@
-# @onchainpal/cognition ②c-2 — crime (extort/sabotage) Implementation Plan
+# @aigg/cognition ②c-2 — crime (extort/sabotage) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add crime to `@onchainpal/cognition` as a second misconduct source — a tiny `detect`/`attemptCrime` primitive reusing the shipped ②c-1 `recordMisconduct`/`runRapSanction` — wired into 0gtown as an `extort` verb where a caught thug earns a rap sheet and is banned, while an uncaught one gets away.
+**Goal:** Add crime to `@aigg/cognition` as a second misconduct source — a tiny `detect`/`attemptCrime` primitive reusing the shipped ②c-1 `recordMisconduct`/`runRapSanction` — wired into 0gtown as an `extort` verb where a caught thug earns a rap sheet and is banned, while an uncaught one gets away.
 
 **Architecture:** A pure `society/crime.ts` (`detect` + `attemptCrime`); `recordMisconduct`/`runRapSanction`/`RapSheet` reused with ZERO ban-path change (crime is just a new `kind`). The host applies the narrative effect (the $0G no-transfer constraint from ②c-1 holds). Full design: [docs/superpowers/specs/2026-06-25-society-crime-design.md](2026-06-25-society-crime-design.md).
 
@@ -75,7 +75,7 @@ In `"scripts"`, after `"test:society"`, add:
 - [ ] **Step 3: Write the failing test `kit/packages/cognition/src/__tests__/crime.smoke.ts`**
 
 ```ts
-/** Smoke for the crime primitive. Run: pnpm --filter @onchainpal/cognition test:crime */
+/** Smoke for the crime primitive. Run: pnpm --filter @aigg/cognition test:crime */
 import assert from 'node:assert/strict';
 import { FakeKernel } from '../kernel/fake';
 import { TrustLedger } from '../social/trust';
@@ -130,7 +130,7 @@ main().catch((e) => { console.error('CRIME SMOKE FAILED ❌', e); process.exit(1
 
 - [ ] **Step 4: Run it to verify it fails**
 
-Run: `pnpm --filter @onchainpal/cognition test:crime`
+Run: `pnpm --filter @aigg/cognition test:crime`
 Expected: FAIL — `Cannot find module '../society/crime'`.
 
 - [ ] **Step 5: Write `kit/packages/cognition/src/society/crime.ts`**
@@ -165,7 +165,7 @@ export async function attemptCrime(
 
 - [ ] **Step 6: Run it to verify it passes**
 
-Run: `pnpm --filter @onchainpal/cognition test:crime`
+Run: `pnpm --filter @aigg/cognition test:crime`
 Expected: `ALL CRIME SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 7: Re-export from the barrel `kit/packages/cognition/src/index.ts`**
@@ -179,7 +179,7 @@ export type { CrimeKind } from './society/crime';
 
 - [ ] **Step 8: Full cognition suite + typecheck**
 
-Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg polity governance rapsheet lending society crime; do pnpm --filter @onchainpal/cognition run test:$s || break; done && pnpm --filter @onchainpal/cognition exec tsc --noEmit`
+Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg polity governance rapsheet lending society crime; do pnpm --filter @aigg/cognition run test:$s || break; done && pnpm --filter @aigg/cognition exec tsc --noEmit`
 Expected: 14 PASS banners; tsc clean.
 
 - [ ] **Step 9: Commit (in the kit submodule)**
@@ -234,7 +234,7 @@ assert.ok(errs({ kind: 'town.crime', data: { offender: 'visitor:1', kind: 'sabot
 
 - [ ] **Step 3: Run the town-pack smoke**
 
-Run: `pnpm --filter @onchainpal/replay test:town`
+Run: `pnpm --filter @aigg/replay test:town`
 Expected: `ALL TOWN-PACK SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 4: Add a `town.crime` reduce case in `kit/packages/replay/viewer/viewer-core.js` `townLedger`**
@@ -259,7 +259,7 @@ In the `'town-ledger'` renderer's credit loop (`if (c.kind === 'lend') … else 
 
 - [ ] **Step 6: Re-run the replay suite**
 
-Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in town validate recorder fixture viewer; do pnpm --filter @onchainpal/replay run test:$s || break; done`
+Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in town validate recorder fixture viewer; do pnpm --filter @aigg/replay run test:$s || break; done`
 Expected: each prints its PASS banner.
 
 - [ ] **Step 7: Commit (in the kit submodule)**
@@ -283,15 +283,15 @@ First read the server to place edits precisely.
 
 - [ ] **Step 1: Read the server's borrow handler, imports, and `liveMode`**
 
-Run: `grep -n "msg.cmd === 'borrow'\|from '@onchainpal/cognition'\|const liveMode\|polity.sanctioned\|attemptCrime\|misconductTopic\|runRapSanction\|findNpc\|guildIds\|nowSeq\|rec.tick(++replayT" src/server.ts`
-Expected: the `borrow` branch (the template to mirror), the `@onchainpal/cognition` import line, `const liveMode = !!live` (~:83), and the in-scope symbols (`polity`/`rapSheet`/`cognition`/`guildIds`/`nowSeq`/`findNpc`/`round0G`/`runRapSanction`/`misconductTopic` — the last two already imported in ②b/②c-1).
+Run: `grep -n "msg.cmd === 'borrow'\|from '@aigg/cognition'\|const liveMode\|polity.sanctioned\|attemptCrime\|misconductTopic\|runRapSanction\|findNpc\|guildIds\|nowSeq\|rec.tick(++replayT" src/server.ts`
+Expected: the `borrow` branch (the template to mirror), the `@aigg/cognition` import line, `const liveMode = !!live` (~:83), and the in-scope symbols (`polity`/`rapSheet`/`cognition`/`guildIds`/`nowSeq`/`findNpc`/`round0G`/`runRapSanction`/`misconductTopic` — the last two already imported in ②b/②c-1).
 
-- [ ] **Step 2: Add `attemptCrime` to the `@onchainpal/cognition` import**
+- [ ] **Step 2: Add `attemptCrime` to the `@aigg/cognition` import**
 
 Add `attemptCrime` to the existing import (which already has `RapSheet, LoanBook, recordMisconduct, runRapSanction, misconductTopic, Polity, …`):
 
 ```ts
-import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction, misconductTopic, attemptCrime } from '@onchainpal/cognition';
+import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction, misconductTopic, attemptCrime } from '@aigg/cognition';
 ```
 
 (Match the real existing import — add only `attemptCrime` if the others are already there.)
@@ -401,7 +401,7 @@ git commit -m "feat: 0gtown extort verb — caught thug rap-banned, uncaught get
 
 - [ ] **Step 1: Run the full kit suites (cognition + replay)**
 
-Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg polity governance rapsheet lending society crime; do pnpm --filter @onchainpal/cognition run test:$s || break; done && for s in town validate recorder fixture viewer; do pnpm --filter @onchainpal/replay run test:$s || break; done`
+Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg polity governance rapsheet lending society crime; do pnpm --filter @aigg/cognition run test:$s || break; done && for s in town validate recorder fixture viewer; do pnpm --filter @aigg/replay run test:$s || break; done`
 Expected: all PASS banners (14 cognition + 5 replay), no break.
 
 - [ ] **Step 2: Bump the kit submodule pointer (0gtown repo)**
@@ -410,7 +410,7 @@ Expected: all PASS banners (14 cognition + 5 replay), no break.
 cd /Volumes/T7-Data/aigg-0gtown/kit && git log --oneline -1   # note the crime HEAD
 cd /Volumes/T7-Data/aigg-0gtown
 git add kit
-git commit -m "chore: bump kit submodule — @onchainpal/cognition ②c-2 crime + replay town.crime"
+git commit -m "chore: bump kit submodule — @aigg/cognition ②c-2 crime + replay town.crime"
 ```
 
 - [ ] **Step 3: Final end-to-end**

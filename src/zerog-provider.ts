@@ -7,7 +7,7 @@
  * back to a scripted brain (the town still works, just without live 0G thoughts).
  */
 import { createRequire } from 'node:module';
-import type { InferenceProvider } from '@onchainpal/npc-agent';
+import type { InferenceProvider } from '@aigg/npc-agent';
 
 // The 0G compute SDK ships a broken ESM build (a chunk imports a missing internal
 // export 'C') that crashes under `await import()` in this "type":"module" package.
@@ -23,7 +23,7 @@ export async function buildZerogProvider(): Promise<InferenceProvider | null> {
   try {
     const { ethers }: any = await import('ethers');
     const { createZGComputeNetworkBroker }: any = nodeRequire('@0gfoundation/0g-compute-ts-sdk');
-    const { ZeroGBrokerProvider }: any = await import('@onchainpal/npc-agent');
+    const { ZeroGBrokerProvider }: any = await import('@aigg/npc-agent');
 
     const mainnet = (process.env.ZEROG_NET || 'testnet').toLowerCase() === 'mainnet';
     const rpc = process.env.ZEROG_RPC || (mainnet ? 'https://evmrpc.0g.ai' : 'https://evmrpc-testnet.0g.ai');

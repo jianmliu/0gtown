@@ -1,4 +1,4 @@
-# Design: `@onchainpal/replay` — a unified, pack-extensible replay library
+# Design: `@aigg/replay` — a unified, pack-extensible replay library
 
 **Date:** 2026-06-24
 **Status:** Approved design, ready for implementation plan
@@ -93,7 +93,7 @@ interface ReplayPack {
 
 ```
 kit/packages/replay/
-  package.json            # @onchainpal/replay  (exports "." → src/index.ts, matches sibling pkgs)
+  package.json            # @aigg/replay  (exports "." → src/index.ts, matches sibling pkgs)
   src/
     schema.ts             # core types: Run, Tick, Event, Summary, ReplayPack, PanelSpec
     registry.ts           # PackRegistry: register(pack) / get(id) / eventKinds()
@@ -113,7 +113,7 @@ kit/packages/replay/
   README.md
 ```
 
-The package follows the existing kit convention (`@onchainpal/gamekit`/`npc-agent`/
+The package follows the existing kit convention (`@aigg/gamekit`/`npc-agent`/
 `onchain`): `main`/`exports` point at `src/index.ts`, TS source consumed directly
 by workspace members.
 

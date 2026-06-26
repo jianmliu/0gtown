@@ -1,4 +1,4 @@
-# Design: `@onchainpal/cognition` ②c-2 — crime (extort/sabotage)
+# Design: `@aigg/cognition` ②c-2 — crime (extort/sabotage)
 
 **Date:** 2026-06-25
 **Status:** Approved design, ready for implementation plan
@@ -116,4 +116,4 @@ Before claiming done: run the spike and confirm the caught→ban and uncaught→
 
 ## 7. Why this is the right seam
 
-②c-2 proves the ②c-1 abstraction: the rap sheet generalized "grounds for a ban," so adding a wholly different misconduct *source* (a caught crime) reuses `recordMisconduct` + `runRapSanction` with **zero ban-path change** — only a new `kind` and a tiny `detect`/`attemptCrime` primitive. The probabilistic detection (caught vs got-away) is the one new idea, isolated in `crime.ts` and demonstrated both ways. This closes ② (`@onchainpal/cognition`): cognition+social (②a) → governance (②b) → misconduct/lending (②c-1) → crime (②c-2).
+②c-2 proves the ②c-1 abstraction: the rap sheet generalized "grounds for a ban," so adding a wholly different misconduct *source* (a caught crime) reuses `recordMisconduct` + `runRapSanction` with **zero ban-path change** — only a new `kind` and a tiny `detect`/`attemptCrime` primitive. The probabilistic detection (caught vs got-away) is the one new idea, isolated in `crime.ts` and demonstrated both ways. This closes ② (`@aigg/cognition`): cognition+social (②a) → governance (②b) → misconduct/lending (②c-1) → crime (②c-2).

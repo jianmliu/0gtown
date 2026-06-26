@@ -1,8 +1,8 @@
-# @onchainpal/cognition ②b — governance Implementation Plan
+# @aigg/cognition ②b — governance Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add governance to `@onchainpal/cognition` ②b — a clock-agnostic `Polity` (propose/vote/tally + sanction/blacklist) and belief-gating helpers that compose ②a's `Cognition`, wired into 0gtown so a ~5-NPC night-market guild collectively bans a scammer visitor (one scam → A-Bao warns the guild → belief-gated votes pass → the visitor's pitches are refused outright).
+**Goal:** Add governance to `@aigg/cognition` ②b — a clock-agnostic `Polity` (propose/vote/tally + sanction/blacklist) and belief-gating helpers that compose ②a's `Cognition`, wired into 0gtown so a ~5-NPC night-market guild collectively bans a scammer visitor (one scam → A-Bao warns the guild → belief-gated votes pass → the visitor's pitches are refused outright).
 
 **Architecture:** A new `governance/` module in the existing cognition package: `polity.ts` (pure, in-memory proposal state machine; no clock — the host calls `tally`) + `voting.ts` (the only ②a-aware code: `voteBeliefGated`/`runSanctionVote` over a `Cognition`). 0gtown drives it synchronously. Full design: [docs/superpowers/specs/2026-06-25-governance-design.md](2026-06-25-governance-design.md).
 
@@ -75,7 +75,7 @@ In the `"scripts"` object, after `"test:aigg"`, add:
 - [ ] **Step 3: Write the failing test `kit/packages/cognition/src/__tests__/polity.smoke.ts`**
 
 ```ts
-/** Smoke for the Polity proposal state machine. Run: pnpm --filter @onchainpal/cognition test:polity */
+/** Smoke for the Polity proposal state machine. Run: pnpm --filter @aigg/cognition test:polity */
 import assert from 'node:assert/strict';
 import { Polity } from '../governance/polity';
 
@@ -145,7 +145,7 @@ main().catch((e) => { console.error('POLITY SMOKE FAILED ❌', e); process.exit(
 
 - [ ] **Step 4: Run it to verify it fails**
 
-Run: `pnpm --filter @onchainpal/cognition test:polity`
+Run: `pnpm --filter @aigg/cognition test:polity`
 Expected: FAIL — `Cannot find module '../governance/polity'`.
 
 - [ ] **Step 5: Write `kit/packages/cognition/src/governance/polity.ts`**
@@ -228,7 +228,7 @@ export class Polity {
 
 - [ ] **Step 6: Run it to verify it passes**
 
-Run: `pnpm --filter @onchainpal/cognition test:polity`
+Run: `pnpm --filter @aigg/cognition test:polity`
 Expected: `ALL POLITY SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 7: Commit (in the kit submodule)**
@@ -253,7 +253,7 @@ cd /Volumes/T7-Data/aigg-0gtown
 
 ```ts
 /** Smoke for the belief-gating bridge (composes ②a Cognition + Polity).
- *  Run: pnpm --filter @onchainpal/cognition test:governance */
+ *  Run: pnpm --filter @aigg/cognition test:governance */
 import assert from 'node:assert/strict';
 import { FakeKernel } from '../kernel/fake';
 import { TrustLedger } from '../social/trust';
@@ -313,7 +313,7 @@ main().catch((e) => { console.error('GOVERNANCE SMOKE FAILED ❌', e); process.e
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm --filter @onchainpal/cognition test:governance`
+Run: `pnpm --filter @aigg/cognition test:governance`
 Expected: FAIL — `Cannot find module '../governance/voting'`.
 
 - [ ] **Step 3: Write `kit/packages/cognition/src/governance/voting.ts`**
@@ -357,7 +357,7 @@ export async function runSanctionVote(
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `pnpm --filter @onchainpal/cognition test:governance`
+Run: `pnpm --filter @aigg/cognition test:governance`
 Expected: `ALL GOVERNANCE SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 5: Re-export governance from the barrel `kit/packages/cognition/src/index.ts`**
@@ -372,7 +372,7 @@ export { voteBeliefGated, runSanctionVote } from './governance/voting';
 
 - [ ] **Step 6: Full cognition suite + typecheck**
 
-Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg polity governance; do pnpm --filter @onchainpal/cognition run test:$s || break; done && pnpm --filter @onchainpal/cognition exec tsc --noEmit`
+Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg polity governance; do pnpm --filter @aigg/cognition run test:$s || break; done && pnpm --filter @aigg/cognition exec tsc --noEmit`
 Expected: ten PASS banners; tsc clean.
 
 - [ ] **Step 7: Commit (in the kit submodule)**
@@ -431,7 +431,7 @@ assert.ok(errs({ kind: 'town.sanction', data: {} }).length > 0, 'sanction withou
 
 - [ ] **Step 3: Run the town-pack smoke**
 
-Run: `pnpm --filter @onchainpal/replay test:town`
+Run: `pnpm --filter @aigg/replay test:town`
 Expected: `ALL TOWN-PACK SMOKE TESTS PASSED ✅`
 
 - [ ] **Step 4: Surface a Guild model in `kit/packages/replay/viewer/viewer-core.js` `townLedger`**
@@ -475,7 +475,7 @@ In the `'town-ledger'` renderer, after the trust-section loop, add a guild secti
 
 - [ ] **Step 6: Re-run the replay suite**
 
-Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in town validate recorder fixture viewer; do pnpm --filter @onchainpal/replay run test:$s || break; done`
+Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in town validate recorder fixture viewer; do pnpm --filter @aigg/replay run test:$s || break; done`
 Expected: each prints its PASS banner. (`viewer-core.smoke` still passes — `townLedger` now returns an extra `guild` key, which its existing assertions don't forbid.)
 
 - [ ] **Step 7: Commit (in the kit submodule)**
@@ -530,10 +530,10 @@ const guildIds = TOWNSFOLK.map((t) => t.id);
 const polity = new Polity();
 ```
 
-And add `Polity, runSanctionVote` to the existing `@onchainpal/cognition` import:
+And add `Polity, runSanctionVote` to the existing `@aigg/cognition` import:
 
 ```ts
-import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote } from '@onchainpal/cognition';
+import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote } from '@aigg/cognition';
 ```
 
 - [ ] **Step 4: Sanction-first check in the pitch handler**
@@ -669,7 +669,7 @@ git add public/index.html 2>/dev/null && git commit -m "fix(ui): render all guil
 
 - [ ] **Step 4: Run the full kit suites (cognition + replay)**
 
-Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg polity governance; do pnpm --filter @onchainpal/cognition run test:$s || break; done && for s in town validate recorder fixture viewer; do pnpm --filter @onchainpal/replay run test:$s || break; done`
+Run: `cd /Volumes/T7-Data/aigg-0gtown && for s in scaffold id fake trust warn gate cognition aigg polity governance; do pnpm --filter @aigg/cognition run test:$s || break; done && for s in town validate recorder fixture viewer; do pnpm --filter @aigg/replay run test:$s || break; done`
 Expected: all PASS banners, no break.
 
 - [ ] **Step 5: Bump the kit submodule pointer (0gtown repo)**
@@ -678,7 +678,7 @@ Expected: all PASS banners, no break.
 cd /Volumes/T7-Data/aigg-0gtown/kit && git log --oneline -1   # note the governance HEAD
 cd /Volumes/T7-Data/aigg-0gtown
 git add kit
-git commit -m "chore: bump kit submodule — @onchainpal/cognition ②b governance + replay guild events"
+git commit -m "chore: bump kit submodule — @aigg/cognition ②b governance + replay guild events"
 ```
 
 - [ ] **Step 6: Final end-to-end**

@@ -1,4 +1,4 @@
-# Design: `@onchainpal/cognition` ②a — cognition + social core
+# Design: `@aigg/cognition` ②a — cognition + social core
 
 **Date:** 2026-06-24
 **Status:** Approved design, ready for implementation plan
@@ -10,7 +10,7 @@
 
 ## 1. Background & motivation
 
-Second library in the kit-extraction initiative (see [[kit-extraction-initiative]] memory; ① replay shipped). This is **sub-project ②a** of a larger `@onchainpal/cognition` package the user chose to build in sequence:
+Second library in the kit-extraction initiative (see [[kit-extraction-initiative]] memory; ① replay shipped). This is **sub-project ②a** of a larger `@aigg/cognition` package the user chose to build in sequence:
 
 - **②a (this spec)** — cognition + social core: the memory→belief→reflection loop plus three social primitives (per-peer trust, warning diffusion, reputation/track-record) and belief-gated decisions.
 - **②b (later)** — governance: propose/vote/enact, belief-gated sanctions, blacklist (maps to monopoly `govern.py`).
@@ -22,7 +22,7 @@ Second library in the kit-extraction initiative (see [[kit-extraction-initiative
 
 1. **Deliverable = "both"**: a cleanly reusable library AND 0gtown consuming it end-to-end.
 2. **Backend = the external aigg-memory service** (not a self-contained TS kernel port). cognition wraps the aigg-memory HTTP kernel via a port; the existing `AiggMemoryClient` in npc-agent already proves the bridge (9 endpoints).
-3. **Home = a new package `@onchainpal/cognition`** (not extending npc-agent in place).
+3. **Home = a new package `@aigg/cognition`** (not extending npc-agent in place).
 4. **Architecture = Approach A**: a port-based, mostly-pure cognition package with `recall`/`learn` middleware hooks; npc-agent/0gtown wire it around their existing LLM call.
 
 ### What already exists (so we don't rebuild it)
@@ -52,7 +52,7 @@ An adversarial review against the real `aigg_memory` source found two design-sin
 
 ## 2. Chosen approach
 
-**Approach A — port-based pure cognition + middleware wiring.** `@onchainpal/cognition` defines a `MemoryKernel` port (the aigg-memory subset it needs), pure social primitives, and a `Cognition` orchestrator with a pre-hook (`recall`) and post-hook (`learn`). Hosts wire these around their existing LLM call. The kernel adapter (`AiggMemoryKernel`) and an in-memory `FakeKernel` ship in the package, so cognition is unit-testable with zero external service.
+**Approach A — port-based pure cognition + middleware wiring.** `@aigg/cognition` defines a `MemoryKernel` port (the aigg-memory subset it needs), pure social primitives, and a `Cognition` orchestrator with a pre-hook (`recall`) and post-hook (`learn`). Hosts wire these around their existing LLM call. The kernel adapter (`AiggMemoryKernel`) and an in-memory `FakeKernel` ship in the package, so cognition is unit-testable with zero external service.
 
 ### The load-bearing insight: model-free core + optional LLM reflection
 
@@ -76,7 +76,7 @@ Consequences:
 
 ```
 kit/packages/cognition/
-  package.json            # @onchainpal/cognition (ESM, exports → src/index.ts, tsx smoke scripts)
+  package.json            # @aigg/cognition (ESM, exports → src/index.ts, tsx smoke scripts)
   tsconfig.json           # extends ../../tsconfig.base.json, moduleResolution: Bundler
   src/
     types.ts              # shared types: Discernment, EpisodeInput, CognitiveSignal, Outcome, ...
@@ -232,7 +232,7 @@ Add three event kinds to the replay `town@0` pack so the cognition arc is visibl
 - `town.warn` — `data:{ from, to, topic, accepted }`
 - `town.trust` — `data:{ peer, delta, value }`
 
-This is a real (not free) change to the shipped `@onchainpal/replay` package, and the plan must include all of it:
+This is a real (not free) change to the shipped `@aigg/replay` package, and the plan must include all of it:
 1. Add the three kinds to `townPack.eventKinds` in `kit/packages/replay/src/packs/town.ts` (no `validateEvent` invariants needed — they pass through).
 2. **Update the shipped exact assertion** `town-pack.smoke.ts:19` (`assert.deepEqual(townPack.eventKinds, [...])`) — adding kinds breaks it otherwise.
 3. **Render them in the viewer**: `viewer/viewer-core.js` `townLedger` silently ignores unknown kinds today, so warn/trust lines require editing `townLedger` + the `town-ledger` renderer in `viewer.js`.

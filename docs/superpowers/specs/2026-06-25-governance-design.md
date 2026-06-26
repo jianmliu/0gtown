@@ -1,4 +1,4 @@
-# Design: `@onchainpal/cognition` ②b — governance
+# Design: `@aigg/cognition` ②b — governance
 
 **Date:** 2026-06-25
 **Status:** Approved design, ready for implementation plan
@@ -10,7 +10,7 @@
 
 ## 1. Background & motivation
 
-Sub-project **②b** of `@onchainpal/cognition` (see [[kit-extraction-initiative]]; ② split into ②a cognition+social → ②b governance → ②c society). ②a shipped: memory→belief→reflection loop, per-peer trust, and warning diffusion. ②b adds **collective governance** — proposals, voting, enactment, and **belief-gated sanctions** — composing directly on the beliefs ②a produces.
+Sub-project **②b** of `@aigg/cognition` (see [[kit-extraction-initiative]]; ② split into ②a cognition+social → ②b governance → ②c society). ②a shipped: memory→belief→reflection loop, per-peer trust, and warning diffusion. ②b adds **collective governance** — proposals, voting, enactment, and **belief-gated sanctions** — composing directly on the beliefs ②a produces.
 
 Maps to monopoly's [`harness/govern.py`](../../../../aigg-monopoly/harness/govern.py): a `Polity` with `submit`/`cast`/`step`/`_enact`, a `THRESHOLD=0.60` tally, and proposal types `set_policy`/`tax`/`disclose`/`sanction`. The load-bearing tie to ②a in monopoly is `_vote_choice`/`_maybe_propose` calling `world.cog.believes(agent, target)` — agents propose/vote to sanction anyone they have *learned* is a trap. That `believes` is exactly ②a's `Cognition` discernment.
 

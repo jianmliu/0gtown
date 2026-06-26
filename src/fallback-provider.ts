@@ -6,7 +6,7 @@
  * Must return `text` as an AgentIntent JSON ({say, effects, emotion}) because the
  * engine's LlmAgent parses the provider's text into an intent.
  */
-import type { InferenceProvider } from '@onchainpal/npc-agent';
+import type { InferenceProvider } from '@aigg/npc-agent';
 
 const LINES = [
   'Well met, friend! What brings you to 0gtown today?',

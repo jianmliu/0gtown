@@ -14,19 +14,19 @@ importers:
       '@0gfoundation/0g-storage-ts-sdk':
         specifier: ^1.2.10
         version: 1.2.10(bufferutil@4.1.0)(ethers@6.17.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(utf-8-validate@5.0.10)
-      '@onchainpal/cognition':
+      '@aigg/cognition':
         specifier: workspace:*
         version: link:kit/packages/cognition
-      '@onchainpal/gamekit':
+      '@aigg/gamekit':
         specifier: workspace:*
         version: link:kit/packages/gamekit
-      '@onchainpal/npc-agent':
+      '@aigg/npc-agent':
         specifier: workspace:*
         version: link:kit/packages/npc-agent
-      '@onchainpal/onchain':
+      '@aigg/onchain':
         specifier: workspace:*
         version: link:kit/packages/onchain
-      '@onchainpal/replay':
+      '@aigg/replay':
         specifier: workspace:*
         version: link:kit/packages/replay
       ethers:
@@ -60,7 +60,7 @@ importers:
 
   kit/packages/gamekit:
     dependencies:
-      '@onchainpal/npc-agent':
+      '@aigg/npc-agent':
         specifier: workspace:*
         version: link:../npc-agent
       viem:
@@ -92,7 +92,7 @@ importers:
 
   kit/packages/onchain:
     dependencies:
-      '@onchainpal/npc-agent':
+      '@aigg/npc-agent':
         specifier: workspace:*
         version: link:../npc-agent
       viem:
