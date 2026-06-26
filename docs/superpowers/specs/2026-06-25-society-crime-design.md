@@ -31,6 +31,10 @@ The one genuinely new mechanic vs ②c-1's lending is **probabilistic detection*
 - Any change to `recordMisconduct`/`runRapSanction`/the rap→ban path (crime is just a new `kind`).
 - Moving the world's $0G (no transfer primitive — ②c-1 finding; crime effects are narrative).
 
+### Revisions from the design audit (2026-06-25)
+
+A code-grounded review against the shipped ②c-1 code + the real server confirmed `attemptCrime` composes with `recordMisconduct`/`runRapSanction` (zero ban-path change), `liveMode` exists (`server.ts:83`), the `extort` branch mirrors `borrow`, and the `town.crime` replay change is the known additive cost. It corrected: **(correctness)** the dev seam uses an explicit `attemptCrime` **`force?: boolean`** (passed only when `!liveMode && typeof msg.caught==='boolean'`) instead of a `P_DETECT`-coupled fake-`rng` trick; **(clarity)** `liveMode` keys off the 0G **Compute** provider, not `MEMORY_URL`/FakeKernel; **(wiring)** the `viewer.js` crime branch must precede the rap `else` or crimes render as "RAP"; **(test)** the spike asserts uncaught→"still served" via `talk`/`look` (no sanction gate), not `pitch` (whose learn-gate can false-positive).
+
 ---
 
 ## 2. Chosen approach
@@ -54,15 +58,15 @@ export function detect(p: number = P_DETECT, rng: () => number = Math.random): b
   return rng() < p;
 }
 
-/** Attempt a crime: roll detection; on catch, write the SAME misconduct signal a default does
- *  (rap entry + offender-scoped belief + one-time trust drop, via recordMisconduct). Uncaught → no trail.
- *  Best-effort (recordMisconduct is non-throwing). */
+/** Attempt a crime: roll detection (or use `force` if given); on catch, write the SAME misconduct signal
+ *  a default does (rap entry + offender-scoped belief + one-time trust drop, via recordMisconduct).
+ *  Uncaught → no trail. Best-effort (recordMisconduct is non-throwing). */
 export async function attemptCrime(
   cognition: Cognition, rapSheet: RapSheet,
   victim: string, offender: string, kind: CrimeKind, now: number,
-  opts: { detectP?: number; rng?: () => number; detail?: string } = {},
+  opts: { detectP?: number; rng?: () => number; force?: boolean; detail?: string } = {},
 ): Promise<{ detected: boolean; topic?: string }> {
-  const detected = detect(opts.detectP ?? P_DETECT, opts.rng);
+  const detected = opts.force ?? detect(opts.detectP ?? P_DETECT, opts.rng);   // force overrides the roll (deterministic tests)
   if (!detected) return { detected: false };
   const topic = await recordMisconduct(cognition, rapSheet, victim, offender, kind, now, opts.detail);
   return { detected: true, topic };
@@ -77,7 +81,7 @@ Re-exported from the package barrel (`P_DETECT`, `CrimeKind`, `detect`, `attempt
 Extend the `town@0` pack again (the same 4-site additive change):
 - Add `town.crime` to `eventKinds`. `data:{ offender, kind, victim, caught }` — emitted on EVERY attempt (so the viewer shows both the caught and got-away paths).
 - Validator: `town.crime` requires non-empty `offender`+`kind` and a boolean `caught`.
-- `viewer-core.js` `townLedger`: a reduce case adding to the `credit`/misconduct list; `viewer.js`: render "⚔ {offender} {kind} {victim} — caught/got away."
+- `viewer-core.js` `townLedger`: a reduce case pushing `{ kind:'crime', offender, crimeKind, victim, caught, t }` to the `credit` list. `viewer.js`: render "⚔ {offender} {kind} {victim} — caught/got away." **The `viewer.js` credit loop is `if(lend)…else if(default)…else(rap)`** — the new `crime` branch MUST be inserted as `else if (c.kind === 'crime')` BEFORE the final `else` (the rap catch-all), or crimes render as "RAP".
 
 (`town.rap`/`town.propose`/`vote`/`sanction` are reused for the caught path — no new ban events.)
 
@@ -88,11 +92,11 @@ Extend the `town@0` pack again (the same 4-site additive change):
 - **`extort` WS command** (new): `{ cmd:'extort', npc }` →
   1. **sanction-first**: a banned thug's `extort` is refused outright (copy the `pitch`/`borrow` `polity.sanctioned(visitorId)` block).
   2. the stall **refuses** the demand (guild solidarity) → the thug **sabotages** the stall in retaliation (narrative; no world $0G change).
-  3. `const { detected, topic } = await attemptCrime(cognition, rapSheet, npc.id, visitorId, 'sabotage', nowSeq, { rng })`.
+  3. build the opts conditionally (the dev seam, below): `const crimeOpts = (!liveMode && typeof msg.caught === 'boolean') ? { force: msg.caught } : {};` then `const { detected, topic } = await attemptCrime(cognition, rapSheet, npc.id, visitorId, 'sabotage', nowSeq, crimeOpts);`.
   4. emit `town.crime` (`{ offender: visitorId, kind: 'sabotage', victim: npc.id, caught: detected }`), best-effort, fresh `rec.tick(++replayT)`.
   5. **if `detected`** → `runRapSanction(rapSheet, polity, npc.id, visitorId, guildIds, { until: Infinity })` → emit `town.propose`/`vote`/`sanction`; reply `{ type:'extorted', caught: true, banned: true, … }` narrating "you trashed the stall and got caught — the guild has barred you."
   6. **else** → reply `{ type:'extorted', caught: false }` ("you got away this time").
-- **Deterministic detection for the spike (dev-mode test seam)**: `const caught = (typeof msg.caught === 'boolean' && !liveMode) ? msg.caught : detect();` — in live mode the outcome is always a real `detect()` roll; the explicit `caught` field is honored ONLY when `!liveMode` (FakeKernel/dev). The thug cannot control detection in production. (Implement by passing `rng: () => (msg.caught ? 0 : 0.99)` into `attemptCrime` when `!liveMode && typeof msg.caught === 'boolean'`, else omit `rng` so it uses `Math.random`.)
+- **Deterministic detection for the spike (dev-mode test seam)**: pass `{ force: msg.caught }` to `attemptCrime` **only when `!liveMode && typeof msg.caught === 'boolean'`**; otherwise pass `{}` so it does a real `detect()` roll. `force` overrides the roll cleanly (no fake-`rng` trickery, and it's independent of `P_DETECT`/`detectP`). The thug cannot control detection in production: `liveMode` is true whenever 0G Compute is configured (`server.ts:83` `const liveMode = !!live`), so the `msg.caught` seam is dead in live mode. (In the spike there's no `ZEROG_WALLET_PK`/`PRIVATE_KEY` → the fallback compute provider → `liveMode === false` → the seam is honored. Note `liveMode` keys off the 0G **Compute** provider, NOT `MEMORY_URL`/the FakeKernel memory gate — they merely coincide in the spike.)
 - Reuses `settleDue`/`ws.on('close')`/`nowSeq`/sanction-first/guild unchanged.
 
 ---
@@ -103,7 +107,7 @@ Extend the `town@0` pack again (the same 4-site additive change):
 - **`crime.smoke`** (FakeKernel + `Cognition`/`TrustLedger` + `RapSheet`): `detect(0.5, () => 0)` true, `detect(0.5, () => 0.9)` false; `attemptCrime` with `rng:()=>0` (caught) → `{detected:true, topic}`, a rap entry written, a later `recall(victim, offender, topic).discernment.q === 1`; with `rng:()=>0.99` (uncaught) → `{detected:false}`, NO rap entry, NO belief.
 - **0gtown spike extension** (two fresh WS connections):
   - **caught**: connection A `extort`s a stall with `caught:true` → `town.crime caught:true` → rap → guild ban → a follow-up action from A is refused (`bannedByGuild`/sanctioned).
-  - **uncaught**: connection B `extort`s with `caught:false` → `town.crime caught:false` → NO rap → B is NOT banned → a follow-up action from B is still served (e.g. a `talk`/`look` succeeds, or a `pitch` is processed normally rather than guild-barred).
+  - **uncaught**: connection B `extort`s with `caught:false` → `town.crime caught:false` → NO rap → B is NOT banned. Assert "still served" via **`talk` or `look`** (NOT `pitch`): `talk`/`look` have no `polity.sanctioned` gate, so a successful `talked`/`room` reply cleanly proves "not banned" — decoupled from `pitch`'s `shouldRefuse` learn-gate, which can return `protected:true` for non-ban reasons (a false positive).
   - assert the replay stream contains `town.crime` (both caught flags) + `town.rap`/`town.sanction` for the caught offender, and `validateRun`s.
 
 Before claiming done: run the spike and confirm the caught→ban and uncaught→free branches and that the replay validates with `town.crime`.
