@@ -32,10 +32,18 @@ export async function buildZerogProvider(): Promise<InferenceProvider | null> {
 
     const broker = await createZGComputeNetworkBroker(wallet);
     const svcs = await broker.inference.listService();
-    const tee = svcs.find((s: any) =>
+    const isTeeChat = (s: any) =>
       String(s.verifiability ?? '').toLowerCase().includes('tee') &&
-      String(s.serviceType ?? '').includes('chat')
-    ) || svcs[0];
+      String(s.serviceType ?? '').includes('chat');
+    // Pick the brain: ZEROG_PROVIDER (exact address) > ZEROG_MODEL (model name substring) > first TeeML chat.
+    const wantProvider = (process.env.ZEROG_PROVIDER || '').toLowerCase();
+    const wantModel = (process.env.ZEROG_MODEL || '').toLowerCase();
+    let tee: any;
+    if (wantProvider) tee = svcs.find((s: any) => String(s.provider).toLowerCase() === wantProvider);
+    if (!tee && wantModel) tee = svcs.find((s: any) => isTeeChat(s) && String(s.model ?? '').toLowerCase().includes(wantModel));
+    if (!tee && (wantProvider || wantModel))
+      console.warn(`[0gtown] ZEROG_MODEL/PROVIDER "${process.env.ZEROG_MODEL || process.env.ZEROG_PROVIDER}" not found in listService() → using default`);
+    if (!tee) tee = svcs.find(isTeeChat) || svcs[0];
     if (!tee) { console.warn('[0gtown] no 0G inference services available → fallback'); return null; }
 
     if (process.env.ZEROG_SKIP_DEPOSIT === '1') {

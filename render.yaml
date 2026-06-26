@@ -24,6 +24,8 @@ services:
         value: mainnet         # mainnet has the TeeML services (real TEE-verified badges)
       - key: ZEROGTOWN_STORAGE
         value: "1"             # anchor learned beliefs to 0G Storage
+      - key: ZEROG_MODEL
+        value: 0GM-1.0-35B-A3B # NPC brain: fast+cheap 0G-native A3B model (substring-matched against listService()). Swap anytime; omit → first TeeML chat.
       - key: ZEROG_WALLET_PK
         sync: false            # SECRET — set in the Render dashboard; use a low-balance dedicated wallet
       - key: ZEROG_SKIP_DEPOSIT
