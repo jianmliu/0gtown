@@ -15,9 +15,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@onchainpal/cognition": "workspace:*",
     "@onchainpal/gamekit": "workspace:*",
     "@onchainpal/npc-agent": "workspace:*",
     "@onchainpal/onchain": "workspace:*",
+    "@onchainpal/replay": "workspace:*",
     "@0gfoundation/0g-compute-ts-sdk": "0.8.3",
     "@0gfoundation/0g-storage-ts-sdk": "^1.2.10",
     "ethers": "^6.16.0",
