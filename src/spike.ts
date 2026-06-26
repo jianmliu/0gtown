@@ -101,6 +101,46 @@ assert.ok(await pitchExpectProtectedOn(ws3, 'A-Bao', arcClaim, true), 'deadbeat 
 console.log('✓ society arc: borrow → default → rap → guild ban → refused');
 await wait(300);
 ws3.close();
+
+// crime arc — CAUGHT extortion → rap → guild ban (fresh visitor; a caught thug gets banned guild-wide)
+console.log('\n--- crime arc (fresh visitor: extort caught → rap → guild ban; uncaught → got away → still served) ---');
+const ws4 = new WebSocket(`ws://localhost:${PORT}/play`);
+ws4.on('message', (d) => { for (const l of d.toString().split('\n').filter(Boolean)) console.log('4<<', l.slice(0, 320)); });
+await new Promise<void>((r) => ws4.on('open', () => r()));
+await wait(200);
+const ex1 = await new Promise<any>((res) => {
+  const onMsg = (raw: any) => { const m = JSON.parse(raw.toString()); if (m.type === 'extorted') { ws4.off('message', onMsg); res(m); } };
+  ws4.on('message', onMsg);
+  ws4.send(JSON.stringify({ cmd: 'extort', npc: 'Fishmonger Mei', caught: true }));   // dev seam: force caught (FakeKernel → !liveMode)
+});
+assert.equal(ex1.caught, true, 'caught extortion');
+await wait(300);
+assert.ok(await pitchExpectProtectedOn(ws4, 'A-Bao', arcClaim, true), 'a caught thug is banned guild-wide');
+await wait(300);
+ws4.close();
+
+// crime arc — UNCAUGHT extortion → no rap → not banned (still served via talk, which has no sanction gate)
+const ws5 = new WebSocket(`ws://localhost:${PORT}/play`);
+ws5.on('message', (d) => { for (const l of d.toString().split('\n').filter(Boolean)) console.log('5<<', l.slice(0, 320)); });
+await new Promise<void>((r) => ws5.on('open', () => r()));
+await wait(200);
+const ex2 = await new Promise<any>((res) => {
+  const onMsg = (raw: any) => { const m = JSON.parse(raw.toString()); if (m.type === 'extorted') { ws5.off('message', onMsg); res(m); } };
+  ws5.on('message', onMsg);
+  ws5.send(JSON.stringify({ cmd: 'extort', npc: 'Fishmonger Mei', caught: false }));   // dev seam: force uncaught
+});
+assert.equal(ex2.caught, false, 'uncaught extortion (got away)');
+// "still served": a talk succeeds (talk has no sanction gate — decoupled from the pitch learn-gate)
+const talked = await new Promise<any>((res) => {
+  const onMsg = (raw: any) => { const m = JSON.parse(raw.toString()); if (m.type === 'talked') { ws5.off('message', onMsg); res(m); } };
+  ws5.on('message', onMsg);
+  ws5.send(JSON.stringify({ cmd: 'talk', npc: 'A-Bao', text: 'evening, friend' }));
+});
+assert.ok(talked.said !== undefined, 'an uncaught thug is still served (talk succeeds — not banned)');
+console.log('✓ crime arc: extort caught → rap → guild ban; uncaught → got away → still served');
+await wait(300);
+ws5.close();
+
 console.log('\n--- done ---');
 
 // replay-stream validation — the run file must conform and carry the town events.
@@ -131,6 +171,7 @@ try {
   for (const k of ['town.lend', 'town.default', 'town.rap']) {
     if (!kinds.has(k)) { console.error(`expected a ${k} event in the replay stream`); process.exit(1); }
   }
+  if (!kinds.has('town.crime')) { console.error('expected a town.crime event in the replay stream'); process.exit(1); }
   console.log(`✓ replay stream ${latest} validates; events: ${[...kinds].join(', ')}`);
 } catch (e: any) {
   console.error(e?.message || e);

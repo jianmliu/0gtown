@@ -24,7 +24,7 @@ import { SharedWorld } from '@onchainpal/gamekit';
 import { createRecorder, viewerDir } from '@onchainpal/replay';
 import { InMemoryStore } from '@onchainpal/npc-agent';
 import type { InferenceProvider } from '@onchainpal/npc-agent';
-import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction, misconductTopic } from '@onchainpal/cognition';
+import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction, misconductTopic, attemptCrime } from '@onchainpal/cognition';
 import { buildZerogProvider } from './zerog-provider';
 import { FallbackProvider } from './fallback-provider';
 import { ZeroGStorageClient, ZEROG_TESTNET } from './zerog-storage';
@@ -456,6 +456,43 @@ export async function startServer(opts: { port?: number } = {}) {
           } catch (e: any) {
             console.warn('[0gtown] replay write skipped:', e?.message);
           }
+          return;
+        }
+
+        if (msg.cmd === 'extort') {
+          const npc = findNpc(String(msg.npc ?? ''));
+          if (!npc) return sendJson({ type: 'error', text: `no one called "${msg.npc}" here` });
+          // sanction-first: a barred thug can't extort either
+          if (polity.sanctioned(visitorId)) {
+            sendJson({ type: 'extorted', npc: npc.name, caught: false, protected: true, reason: 'The night-market guild has barred you.', receipts });
+            return;
+          }
+          // dev-mode test seam: honor an explicit msg.caught ONLY when NOT in live (0G Compute) mode; else roll.
+          // crime is narrative-only — no world $0G move (②c-1 finding).
+          const crimeOpts = (!liveMode && typeof msg.caught === 'boolean') ? { force: msg.caught as boolean } : {};
+          const { detected } = await attemptCrime(cognition, rapSheet, npc.id, visitorId, 'sabotage', nowSeq, crimeOpts);
+          // best-effort replay recording — a fresh tick carries the crime events; never break the interaction
+          try {
+            rec.tick(++replayT);
+            rec.event('town.crime', { actor: visitorId, target: npc.id, by: 'engine', data: { offender: visitorId, kind: 'sabotage', victim: npc.id, caught: detected } });
+            if (detected) {
+              rec.event('town.rap', { actor: visitorId, by: 'engine', data: { offender: visitorId, kind: 'sabotage', victim: npc.id } });
+              const round = await runRapSanction(rapSheet, polity, npc.id, visitorId, guildIds, { until: Infinity });
+              if (round) {
+                rec.event('town.propose', { actor: npc.id, target: visitorId, by: 'npc', data: { proposer: npc.id, target: visitorId, topic: misconductTopic(visitorId), pid: round.pid } });
+                for (const [voter, choice] of Object.entries(round.votes)) {
+                  if (voter === npc.id) continue;
+                  rec.event('town.vote', { actor: voter, target: visitorId, by: 'npc', data: { voter, choice, pid: round.pid } });
+                }
+                rec.event('town.sanction', { actor: npc.id, target: visitorId, by: 'engine', data: { target: visitorId, passed: round.result.passed, shareFor: round.result.shareFor } });
+              }
+            }
+            rec.flush();
+          } catch (e: any) {
+            console.warn('[0gtown] replay write skipped:', e?.message);
+          }
+          if (detected) sendJson({ type: 'extorted', npc: npc.name, caught: true, banned: true, reason: 'You demanded protection, trashed the stall, and got caught — the night-market guild has barred you.', receipts });
+          else sendJson({ type: 'extorted', npc: npc.name, caught: false, reason: 'You shook down the stall and slipped away — this time.', receipts });
           return;
         }
 
