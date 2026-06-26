@@ -1,0 +1,37 @@
+# Render Blueprint for 0gtown — https://render.com/docs/blueprint-spec
+#
+# Use: Render Dashboard → New + → Blueprint → pick this repo (jianmliu/0gtown).
+# Render reads this file, creates the Web Service below, and prompts you for the
+# secret env vars (ZEROG_WALLET_PK) — those are never stored in this file.
+#
+# The Dockerfile clones the engine (aigg-agent-kit) itself, so no git-submodule
+# checkout is needed on Render's side.
+
+services:
+  - type: web                 # public HTTP + WebSocket service (Render Web Services support WS natively)
+    name: 0gtown
+    runtime: docker           # build from ./Dockerfile (native deps + 0G SDKs need real Node, not Workers)
+    branch: main
+    region: singapore         # change to oregon/frankfurt/etc. if you prefer
+    plan: starter             # NOT free — free sleeps after 15 min idle and loses the in-process town state
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    numInstances: 1           # town state (balances/ledgers) lives in-process — never scale past 1
+    healthCheckPath: /healthz # existing route in src/server.ts → 200 "ok"
+    autoDeploy: true          # redeploy on push to main
+    envVars:
+      - key: ZEROG_NET
+        value: mainnet         # mainnet has the TeeML services (real TEE-verified badges)
+      - key: ZEROGTOWN_STORAGE
+        value: "1"             # anchor learned beliefs to 0G Storage
+      - key: ZEROG_WALLET_PK
+        sync: false            # SECRET — set in the Render dashboard; use a low-balance dedicated wallet
+      - key: ZEROG_SKIP_DEPOSIT
+        sync: false            # optional: set "1" to reuse an already-funded compute ledger (skip boot deposit)
+
+    # Optional — keep replay logs (runs/*.jsonl) across deploys/restarts (~+$1-2/mo).
+    # Without this the recorder uses the ephemeral filesystem (fine for a demo; logs reset on redeploy).
+    # disk:
+    #   name: runs
+    #   mountPath: /app/runs
+    #   sizeGB: 1
