@@ -513,7 +513,7 @@ export async function startServer(opts: { port?: number } = {}) {
               const before = await settler.balanceOf(t.id);
               const tx = await settler.reconcile(t.id, target);
               const after = await settler.balanceOf(t.id);
-              results.push({ npc: t.name, id: t.id, address: settler.addressOf(t.id), target, before, after, tx: tx ? { ...tx, url: explorerTx(tx.txHash) } : null });
+              results.push({ npc: t.name, id: t.id, address: settler.addressOf(t.id), target: round0G(target), before: round0G(before ?? 0), after: round0G(after ?? 0), tx: tx ? { ...tx, url: explorerTx(tx.txHash) } : null });
               if (tx) {
                 try {
                   rec.tick(++replayT);
