@@ -166,9 +166,11 @@ ws5.close();
   const layer = new Native0gSettlementLayer({ chain, npcMnemonic: MN, treasuryAddress: TRE });
   const id = 'npc:0gtown:abao'; chain.setSigner(id, layer.addressOf(id));
   await layer.reconcile(id, 10);
-  assert.ok(Math.abs((await layer.balanceOf(id)) - 10) < 1e-6, 'reconcile funds NPC to 10');
+  const b1 = await layer.balanceOf(id);
+  assert.ok(b1 != null && Math.abs(b1 - 10) < 1e-6, 'reconcile funds NPC to 10');
   await layer.reconcile(id, 7);
-  assert.ok(Math.abs((await layer.balanceOf(id)) - 7) < 1e-3, 'reconcile settles a scam (10→7) on-chain');
+  const b2 = await layer.balanceOf(id);
+  assert.ok(b2 != null && Math.abs(b2 - 7) < 1e-3, 'reconcile settles a scam (10→7) on-chain');
   console.log('✓ settle arc: reconcile aligns on-chain balance to the in-process ledger (10→7)');
 }
 
