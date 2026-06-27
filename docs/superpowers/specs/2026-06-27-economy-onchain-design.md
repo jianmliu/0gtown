@@ -33,6 +33,20 @@ This is the 4th `@aigg/*` kit extraction (after ① replay, ② cognition). `@ai
 - 0G mainnet: chainId **16661**, rpc `https://evmrpc.0g.ai`, native coin **$0G** (18 decimals). `@aigg/onchain` already uses `viem`.
 - The world has **no NPC→arbitrary-address transfer** (②c-1 finding) — value only moves NPC↔treasury, so a visitor triggering `settle` cannot extract funds.
 
+### Audit refinements (code-grounded review, 2026-06-27)
+
+A read of the live tree confirmed the design is buildable with no hard blockers. Pin these in the plan:
+
+- **Use viem's predefined 0G chains.** viem `2.53.1` (installed; `onchain` declares `^2.51.3`) exports `zeroGMainnet` (id 16661, rpc `https://evmrpc.0g.ai`, native `0G`/18) and `zeroGTestnet` (id 16602) from `viem/chains`. Import those (select by `chainId`); only fall back to `defineChain` if a custom `rpcUrl` override is supplied.
+- **`SettlementLayer` param is named `gcc: number`** (not `units`). `Native0gSettlementLayer` is structurally compatible regardless (TS ignores param names); the spec's "units" is just our label. Method shapes match exactly (`settlement-layer.ts:18-27`).
+- **`world.balanceGcc(npcId)` returns `Promise<number>` (never null)** — it coalesces to `?? 0` (`shared-world.ts:1289-1300`). `targetUnits = await world.balanceGcc(id)` needs no null-guard. It can be **fractional** after pitches, so the `units → wei` conversion must be bigint-safe: `parseEther(String(round(units, 1e-9)))` — a raw `Number → BigInt` on a fractional product throws. Round `target` to the `dustUnits` grid first.
+- **[gas reserve] `deposit` must over-fund a small gas buffer.** Gas for a `withdraw` is paid by the *NPC EOA itself*, and an EOA can't send 100% of its balance. So `deposit(npc, units)` sends `units×weiPerUnit + GAS_BUFFER`, and `withdraw` sends `min(unitsAsWei, balance − estimatedGas − reserve)` using `publicClient.estimateFeesPerGas()` × 21000. Without the buffer a freshly-funded NPC can't fully withdraw. Per-NPC try/catch turns any residual gas shortfall into a soft `{ok:false, reason:'insufficient-gas'}`.
+- **Roster + read are in hand:** iterate `TOWNSFOLK` (`server.ts:37-63`, 5 NPCs) / `guildIds` (`:112`); `balanceGcc` with no `settlementLayer` is a pure in-memory `store.get` (immediate, no network). `rateLimited()` (`:235`) is per-connection — reuse it for `settle` with a longer window.
+- **0gtown does NOT wire a `settlementLayer` into its `SharedWorld`** (`server.ts:88`) and won't — the settler is driven explicitly by the `settle` command, so there's no recursive/auto invocation; the in-process store stays the live truth.
+- **Replay change = 4 files / 5 edit-spots:** `packs/town.ts` (the `eventKinds` array **and** an optional validator block — 2 spots), `viewer/viewer-core.js` `townLedger` reduce, `viewer/viewer.js` render branch, `__tests__/town-pack.smoke.ts` `eventKinds` deepEqual. The `viewer.js` `town.settle` branch is **mandatory** (the credit loop's fall-through `else` mislabels unknown kinds as "RAP"). Mirror `town.crime`/`town.lend`.
+- **`NPC_MNEMONIC` is genuinely new** (only `ZEROG_WALLET_PK` exists today) → NPC EOAs start at 0 on-chain → first `settle` is a pure deposit, handled by `reconcile = diff(target − onchainBalance)`.
+- **`@aigg/onchain` imports cleanly into the Node server** (`type:module`, pure-viem, no broken-ESM 0G SDK; 0gtown already lists it as a `workspace:*` dep but `server.ts` doesn't import it yet). Browser-safety warning N/A (server is Node).
+
 ### Non-goals (④)
 
 - No GCC ERC-20 / token deploy, no x402 facilitator on 0G Chain, no ERC-6551 TBA NFTs (those are the Base stack; out of scope).
