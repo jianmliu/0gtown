@@ -26,6 +26,7 @@ import { InMemoryStore } from '@aigg/npc-agent';
 import type { InferenceProvider } from '@aigg/npc-agent';
 import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction, misconductTopic, attemptCrime } from '@aigg/cognition';
 import { buildZerogProvider } from './zerog-provider';
+import { buildSettler } from './native-settler';
 import { FallbackProvider } from './fallback-provider';
 import { ZeroGStorageClient, ZEROG_TESTNET } from './zerog-storage';
 
@@ -79,6 +80,7 @@ export async function startServer(opts: { port?: number } = {}) {
 
   // 1. brain — live 0G Compute when funded, else a scripted fallback
   const live = await buildZerogProvider();
+  const settler = await buildSettler(); // null when ECON_ONCHAIN!=='1' or keys missing
   const provider: InferenceProvider = live ?? new FallbackProvider();
   const liveMode = !!live;
   console.log(`[0gtown] brain: ${liveMode ? 'LIVE 0G Compute (TEE)' : 'fallback (scripted — no live 0G)'}`);
@@ -232,7 +234,7 @@ export async function startServer(opts: { port?: number } = {}) {
   wss.on('connection', (ws: WebSocket) => {
     const visitorId = `player:visitor:${++seq}`;
     let lastTalk = 0;
-    const rateLimited = () => { const now = Date.now(); if (now - lastTalk < 2000) return true; lastTalk = now; return false; };
+    const rateLimited = (windowMs = 2000) => { const now = Date.now(); if (now - lastTalk < windowMs) return true; lastTalk = now; return false; };
     const sendJson = (o: unknown) => { try { ws.send(JSON.stringify(o)); } catch { /* peer gone */ } };
     sendJson({ type: 'hello', town: '0gtown', liveMode, room: ROOM, receipts });
     roomSnapshot().then(sendJson);
@@ -497,6 +499,34 @@ export async function startServer(opts: { port?: number } = {}) {
           if (detected) sendJson({ type: 'extorted', npc: npc.name, caught: true, banned: true, reason: 'You demanded protection, trashed the stall, and got caught — the night-market guild has barred you.', receipts });
           else sendJson({ type: 'extorted', npc: npc.name, caught: false, reason: 'You shook down the stall and slipped away — this time.', receipts });
           return;
+        }
+
+        if (msg.cmd === 'settle') {
+          if (!settler) return sendJson({ type: 'settled', disabled: true, reason: 'on-chain settlement not configured' });
+          if (rateLimited(8000)) return sendJson({ type: 'error', text: 'settling — give it a moment' });
+          const net = (process.env.ZEROG_NET || 'testnet').toLowerCase() === 'mainnet' ? 'mainnet' : 'testnet';
+          const explorerTx = (h: string) => `https://chainscan${net === 'mainnet' ? '' : '-galileo'}.0g.ai/tx/${h}`;
+          const results: any[] = [];
+          for (const t of TOWNSFOLK) {
+            try {
+              const target = await world.balanceGcc(t.id);
+              const before = await settler.balanceOf(t.id);
+              const tx = await settler.reconcile(t.id, target);
+              const after = await settler.balanceOf(t.id);
+              results.push({ npc: t.name, id: t.id, address: settler.addressOf(t.id), target, before, after, tx: tx ? { ...tx, url: explorerTx(tx.txHash) } : null });
+              if (tx) {
+                try {
+                  rec.tick(++replayT);
+                  rec.event('town.settle', { actor: t.id, by: 'npc', data: { units: tx.units, direction: tx.direction, txHash: tx.txHash, address: tx.address } });
+                  rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
+                  rec.flush();
+                } catch (e: any) { console.warn('[0gtown] settle replay skipped:', e?.message); }
+              }
+            } catch (e: any) {
+              results.push({ npc: t.name, id: t.id, error: e?.message?.slice(0, 120) ?? 'settle failed' });
+            }
+          }
+          return sendJson({ type: 'settled', net, npcs: results });
         }
 
         sendJson({ type: 'error', text: `unknown command: ${msg.cmd}` });
