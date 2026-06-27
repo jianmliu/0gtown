@@ -141,6 +141,37 @@ console.log('✓ crime arc: extort caught → rap → guild ban; uncaught → go
 await wait(300);
 ws5.close();
 
+// --- settle arc (no ECON_ONCHAIN in the spike → graceful disabled reply) ---
+{
+  const wsS = new WebSocket(`ws://localhost:${PORT}/play`);
+  await new Promise<void>((r) => wsS.on('open', () => r()));
+  const settled = await new Promise<any>((res) => {
+    const onMsg = (raw: any) => { const m = JSON.parse(raw.toString()); if (m.type === 'settled') { wsS.off('message', onMsg); res(m); } };
+    wsS.on('message', onMsg);
+    wsS.send(JSON.stringify({ cmd: 'settle' }));
+  });
+  assert.equal(settled.disabled, true, 'settle is a graceful no-op when ECON_ONCHAIN is unset');
+  wsS.close();
+  console.log('✓ settle arc: disabled path returns { settled, disabled:true }');
+}
+
+// --- on-chain reconcile logic (hermetic, FakeNativeChain) ---
+{
+  const { Native0gSettlementLayer, FakeNativeChain } = await import('@aigg/onchain');
+  const { parseEther } = await import('viem');
+  const chain = new FakeNativeChain({ gasCostWei: parseEther('0.0001') });
+  const TRE = '0x000000000000000000000000000000000000dEaD' as const;
+  chain.set(TRE, parseEther('100')); chain.treasuryAddr = TRE;
+  const MN = 'test test test test test test test test test test test junk';
+  const layer = new Native0gSettlementLayer({ chain, npcMnemonic: MN, treasuryAddress: TRE });
+  const id = 'npc:0gtown:abao'; chain.setSigner(id, layer.addressOf(id));
+  await layer.reconcile(id, 10);
+  assert.ok(Math.abs((await layer.balanceOf(id)) - 10) < 1e-6, 'reconcile funds NPC to 10');
+  await layer.reconcile(id, 7);
+  assert.ok(Math.abs((await layer.balanceOf(id)) - 7) < 1e-3, 'reconcile settles a scam (10→7) on-chain');
+  console.log('✓ settle arc: reconcile aligns on-chain balance to the in-process ledger (10→7)');
+}
+
 console.log('\n--- done ---');
 
 // replay-stream validation — the run file must conform and carry the town events.
