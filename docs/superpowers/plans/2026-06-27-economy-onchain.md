@@ -186,16 +186,19 @@ export class Native0gSettlementLayer {
     if (send <= 0n) return null;
     return this.chain.sendNative('treasury', addr, send);
   }
-  /** NPC → treasury, always leaving gas. Returns the tx hash (or null if nothing sendable). */
+  /** NPC → treasury. The NPC pays gas OUT OF the withdrawn amount, so its reported
+   *  balance nets to exactly `target` (reserve stays a stable buffer; reconcile converges).
+   *  Returns the tx hash (or null if the diff is too small to cover its own gas). */
   private async withdrawTx(npcId: string, units: number): Promise<`0x${string}` | null> {
     if (units <= 0) return null;
     const addr = this.addressOf(npcId);
     const raw = await this.chain.getBalanceWei(addr);
     const gas = await this.chain.estimateGasCostWei();
     const want = this.unitsToWei(units);
-    const maxSendable = clampMin0(raw - gas);          // must leave gas for THIS tx
-    const send = want < maxSendable ? want : maxSendable;
-    if (send <= 0n) return null;
+    const net = want > gas ? want - gas : 0n;          // NPC's own gas comes out of `want`
+    const maxSendable = clampMin0(raw - gas);          // can't send more than balance-minus-gas
+    const send = net < maxSendable ? net : maxSendable;
+    if (send <= 0n) return null;                       // sub-gas diff — can't be settled economically
     return this.chain.sendNative(npcId, this.treasury, send);
   }
 
@@ -209,15 +212,20 @@ export class Native0gSettlementLayer {
   async anchor(_stateRoot: string): Promise<void> { /* no-op */ }
 
   /** checkpoint helper: align the NPC's on-chain balance to `targetUnits`; returns the tx (or null if within dust). */
+  // INVARIANT: for DOWNWARD convergence the effective floor is max(dustUnits, gas/weiPerUnit),
+  // not dustUnits alone — the NPC pays its own withdraw gas, so a sub-gas diff can't be settled
+  // and is a TRUE no-op (returns null), never a silently-stuck diff.
   async reconcile(npcId: string, targetUnits: number): Promise<SettleTx | null> {
     const current = (await this.balanceOf(npcId)) ?? 0;
     const diff = targetUnits - current;
-    if (Math.abs(diff) < this.dustUnits) return null;
+    if (Math.abs(diff) < this.dustUnits) return null;          // already aligned
     const addr = this.addressOf(npcId);
     if (diff > 0) {
-      const txHash = await this.depositTx(npcId, diff);
+      const txHash = await this.depositTx(npcId, diff);        // treasury pays gas → always settles
       return txHash ? { npcId, address: addr, direction: 'deposit', units: diff, txHash } : null;
     }
+    const gasFloorUnits = this.weiToUnits(await this.chain.estimateGasCostWei());
+    if (-diff <= gasFloorUnits) return null;                   // sub-gas downward diff → honest no-op
     const txHash = await this.withdrawTx(npcId, -diff);
     return txHash ? { npcId, address: addr, direction: 'withdraw', units: -diff, txHash } : null;
   }
@@ -520,15 +528,20 @@ export async function buildSettler(): Promise<Native0gSettlementLayer | null> {
   const npcMnemonic = process.env.NPC_MNEMONIC;
   const treasuryPk = (process.env.ZEROG_WALLET_PK || process.env.PRIVATE_KEY) as `0x${string}` | undefined;
   if (!npcMnemonic || !treasuryPk) {
-    console.warn('[0gtown] ECON_ONCHAIN=1 but NPC_MNEMONIC / ZEROG_WALLET_PK missing → settle disabled');
+    console.warn('[0gtown] ECON_ONCHAIN=1 but NPC_MNEMONIC / ZEROG_WALLET_PK|PRIVATE_KEY missing → settle disabled');
     return null;
   }
   const net = (process.env.ZEROG_NET || 'testnet').toLowerCase() === 'mainnet' ? 'mainnet' : 'testnet';
-  const treasuryAddress = privateKeyToAccount(treasuryPk).address;
-  const chain = new ViemNativeChain({ net, rpcUrl: process.env.ZEROG_RPC, npcMnemonic, treasuryPrivateKey: treasuryPk });
-  const weiPerUnit = process.env.ECON_WEI_PER_UNIT ? parseEther(process.env.ECON_WEI_PER_UNIT) : undefined;
-  console.log('[0gtown] on-chain settlement ON · net', net, '· treasury', treasuryAddress);
-  return new Native0gSettlementLayer({ chain, npcMnemonic, treasuryAddress, weiPerUnit });
+  try { // best-effort, exactly like buildZerogProvider: a bad key/amount degrades to disabled, never crashes boot
+    const treasuryAddress = privateKeyToAccount(treasuryPk).address;
+    const chain = new ViemNativeChain({ net, rpcUrl: process.env.ZEROG_RPC, npcMnemonic, treasuryPrivateKey: treasuryPk });
+    const weiPerUnit = process.env.ECON_WEI_PER_UNIT ? parseEther(process.env.ECON_WEI_PER_UNIT) : undefined;
+    console.log('[0gtown] on-chain settlement ON · net', net, '· treasury', treasuryAddress);
+    return new Native0gSettlementLayer({ chain, npcMnemonic, treasuryAddress, weiPerUnit });
+  } catch (e: any) {
+    console.warn('[0gtown] settler build failed → settle disabled:', e?.message?.slice(0, 160));
+    return null;
+  }
 }
 ```
 
@@ -582,7 +595,7 @@ In the `ws.on('message')` switch, after the `extort` block and before the final 
               const before = await settler.balanceOf(t.id);
               const tx = await settler.reconcile(t.id, target);
               const after = await settler.balanceOf(t.id);
-              results.push({ npc: t.name, id: t.id, address: settler.addressOf(t.id), target, before, after, tx: tx ? { ...tx, url: explorerTx(tx.txHash) } : null });
+              results.push({ npc: t.name, id: t.id, address: settler.addressOf(t.id), target: round0G(target), before: round0G(before ?? 0), after: round0G(after ?? 0), tx: tx ? { ...tx, url: explorerTx(tx.txHash) } : null });
               if (tx) {
                 try {
                   rec.tick(++replayT);
@@ -660,9 +673,11 @@ At the END of `src/spike.ts`, add a pure-logic check using `FakeNativeChain` (pr
   const layer = new Native0gSettlementLayer({ chain, npcMnemonic: MN, treasuryAddress: TRE });
   const id = 'npc:0gtown:abao'; chain.setSigner(id, layer.addressOf(id));
   await layer.reconcile(id, 10);
-  assert.ok(Math.abs((await layer.balanceOf(id)) - 10) < 1e-6, 'reconcile funds NPC to 10');
+  const b1 = await layer.balanceOf(id);
+  assert.ok(b1 != null && Math.abs(b1 - 10) < 1e-6, 'reconcile funds NPC to 10');
   await layer.reconcile(id, 7);
-  assert.ok(Math.abs((await layer.balanceOf(id)) - 7) < 1e-3, 'reconcile settles a scam (10→7) on-chain');
+  const b2 = await layer.balanceOf(id);
+  assert.ok(b2 != null && Math.abs(b2 - 7) < 1e-3, 'reconcile settles a scam (10→7) on-chain');
   console.log('✓ settle arc: reconcile aligns on-chain balance to the in-process ledger (10→7)');
 }
 ```
