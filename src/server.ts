@@ -254,12 +254,15 @@ export async function startServer(opts: { port?: number } = {}) {
           const text = String(msg.text || '').slice(0, 500);
           if (!text) return sendJson({ type: 'error', text: 'say something first' });
           if (rateLimited()) return sendJson({ type: 'error', text: 'one at a time — give them a breath' });
+          // Mirror the visitor's language: any CJK char → reply in 中文, otherwise English.
+          // SharedWorld.talk defaults lang to 'zh' when unset, so we MUST pass it explicitly.
+          const lang: 'zh' | 'en' = /[㐀-鿿]/.test(text) ? 'zh' : 'en';
           sendJson({ type: 'thinking', npc: npc.name });
           let t: any;
           try {
-            t = await world.talk({ npcId: npc.id, visitorId, text });
+            t = await world.talk({ npcId: npc.id, visitorId, text, lang });
             // GLM-5 occasionally returns non-JSON → empty say; one quiet retry usually fixes it.
-            if (!t.said) t = await world.talk({ npcId: npc.id, visitorId, text }).catch(() => t);
+            if (!t.said) t = await world.talk({ npcId: npc.id, visitorId, text, lang }).catch(() => t);
           } catch {
             // 0G momentarily unavailable / ledger drained → keep the town alive (scripted, not TEE-verified).
             const bal = await world.balanceGcc(npc.id).catch(() => 0);
