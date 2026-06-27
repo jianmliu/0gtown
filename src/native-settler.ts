@@ -13,13 +13,18 @@ export async function buildSettler(): Promise<Native0gSettlementLayer | null> {
   const npcMnemonic = process.env.NPC_MNEMONIC;
   const treasuryPk = (process.env.ZEROG_WALLET_PK || process.env.PRIVATE_KEY) as `0x${string}` | undefined;
   if (!npcMnemonic || !treasuryPk) {
-    console.warn('[0gtown] ECON_ONCHAIN=1 but NPC_MNEMONIC / ZEROG_WALLET_PK missing → settle disabled');
+    console.warn('[0gtown] ECON_ONCHAIN=1 but NPC_MNEMONIC / ZEROG_WALLET_PK|PRIVATE_KEY missing → settle disabled');
     return null;
   }
   const net = (process.env.ZEROG_NET || 'testnet').toLowerCase() === 'mainnet' ? 'mainnet' : 'testnet';
-  const treasuryAddress = privateKeyToAccount(treasuryPk).address;
-  const chain = new ViemNativeChain({ net, rpcUrl: process.env.ZEROG_RPC, npcMnemonic, treasuryPrivateKey: treasuryPk });
-  const weiPerUnit = process.env.ECON_WEI_PER_UNIT ? parseEther(process.env.ECON_WEI_PER_UNIT) : undefined;
-  console.log('[0gtown] on-chain settlement ON · net', net, '· treasury', treasuryAddress);
-  return new Native0gSettlementLayer({ chain, npcMnemonic, treasuryAddress, weiPerUnit });
+  try { // best-effort, exactly like buildZerogProvider: a bad key/amount degrades to disabled, never crashes boot
+    const treasuryAddress = privateKeyToAccount(treasuryPk).address;
+    const chain = new ViemNativeChain({ net, rpcUrl: process.env.ZEROG_RPC, npcMnemonic, treasuryPrivateKey: treasuryPk });
+    const weiPerUnit = process.env.ECON_WEI_PER_UNIT ? parseEther(process.env.ECON_WEI_PER_UNIT) : undefined;
+    console.log('[0gtown] on-chain settlement ON · net', net, '· treasury', treasuryAddress);
+    return new Native0gSettlementLayer({ chain, npcMnemonic, treasuryAddress, weiPerUnit });
+  } catch (e: any) {
+    console.warn('[0gtown] settler build failed → settle disabled:', e?.message?.slice(0, 160));
+    return null;
+  }
 }
