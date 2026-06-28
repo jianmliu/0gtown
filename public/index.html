@@ -148,7 +148,13 @@ button.act{ font-family:var(--mono); font-size:12.5px; letter-spacing:.02em; bor
 .scam{ color:#f2b3a6; border-color:rgba(226,97,74,.5); background:var(--scam-soft) }
 .scam:hover{ border-color:var(--scam); background:rgba(226,97,74,.2) }
 .scam.learned{ color:var(--seal); border-color:var(--seal-line); background:var(--seal-soft) }
+.settle{ color:var(--seal); border-color:var(--seal-line); background:var(--seal-soft) }
+.settle:hover{ border-color:var(--seal); background:rgba(55,216,191,.2) }
 button:disabled{ opacity:.4; cursor:not-allowed }
+
+/* on-chain settlement chip */
+.chain-link{ display:inline-flex; align-items:center; gap:6px; margin-top:8px; font-family:var(--mono); font-size:10.5px; color:var(--seal); text-decoration:none; border:1px solid var(--seal-line); border-radius:8px; padding:6px 11px; background:var(--seal-soft); transition:.15s }
+.chain-link:hover{ background:rgba(55,216,191,.2) }
 
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
@@ -192,6 +198,7 @@ button:disabled{ opacity:.4; cursor:not-allowed }
     <div class="composer">
       <input id="say" placeholder="Say something…" autocomplete="off" disabled />
       <button id="scam" class="act scam" disabled>try a scam ✦</button>
+      <button id="settle-btn" class="act settle">settle to 0G chain ⛓</button>
     </div>
   </section>
 </main>
@@ -231,6 +238,7 @@ function dispatch(m){
     case 'thinking': busy(m.npc,true); break;
     case 'talked': onTalked(m); break;
     case 'pitched': onPitched(m); break;
+    case 'settled': onSettled(m); break;
     case 'error': toast(m.text); unbusy(); break;
   }
 }
@@ -276,6 +284,13 @@ function render(e){
   }
   if(e.k==='loss') return `<div class="beat loss"><div class="line">🪙 ${esc(e.npc)} believed you — handed over <b>${e.amt} $0G</b> (purse → ${e.bal}). A hard lesson, freshly bought.</div>${stamp(e.root)}</div>`;
   if(e.k==='learn') return `<div class="beat learn"><div class="line">🛡 ${esc(e.npc)} won’t be fooled twice: <em>“${esc(e.belief)}”</em></div>${e.root?stamp(e.root,'recalled from 0G Storage'):''}</div>`;
+  if(e.k==='settle-note') return `<div class="beat"><div class="line">⛓ ${esc(e.text)}</div></div>`;
+  if(e.k==='settle'){
+    const link=e.tx
+      ? `<a class="chain-link" href="${esc(e.tx.url)}" target="_blank" rel="noopener">⛓ ${esc(String(e.tx.txHash).slice(0,10))}…</a>`
+      : `<div class="seal local" style="font-size:10px"><span class="dot"></span>(already aligned)</div>`;
+    return `<div class="beat learn"><div class="line">⛓ ${esc(e.npc)} → <b>${esc(e.after)} $0G</b> on-chain</div>${link}</div>`;
+  }
   return '';
 }
 function stamp(root,label){ if(!root)return ''; const s=root.slice(0,10)+'…'+root.slice(-6);
@@ -297,6 +312,13 @@ function onPitched(m){ unbusy(); const id=byName(m.npc)?.id||state.cur;
   }
   bumpBal(m.npc,m.balance0G); updateScam(); renderStalls();
 }
+function onSettled(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
+  if(m.disabled){ pushLog(id,{k:'settle-note',text:'on-chain settlement not configured (set ECON_ONCHAIN=1)'}); return; }
+  for(const n of (m.npcs||[])){
+    if(n.error){ pushLog(id,{k:'settle-note',text:`${n.npc}: ${n.error}`}); continue; }
+    pushLog(id,{k:'settle',npc:n.npc,after:n.after,tx:n.tx});
+  }
+}
 function renderLedger(){ const el=$('#ledger');
   if(!state.beliefs.length){ el.innerHTML='<div class="empty">No hard lessons yet. Go teach someone a thing or two.</div>'; return; }
   el.innerHTML=state.beliefs.map(b=>`<div class="belief"><div class="who">${esc(b.npc)} learned</div><div class="txt">“${esc(b.belief)}”</div>${b.root?stamp(b.root):'<span class="seal local" style="font-size:10px"><span class="dot"></span>off-chain</span>'}</div>`).join('');
@@ -309,6 +331,7 @@ $('#say').addEventListener('keydown',e=>{ if(e.key!=='Enter')return; const t=e.t
   const n=byId(state.cur); pushLog(state.cur,{k:'me',t}); e.target.value=''; busy(n.name,true); send({cmd:'talk',npc:n.name,text:t}); });
 $('#scam').addEventListener('click',()=>{ if(!state.cur)return; const n=byId(state.cur);
   pushLog(state.cur,{k:'me',t:`(slides over ${SCAM.amount} $0G) ${SCAM.claim}`}); busy(n.name,true); send({cmd:'pitch',npc:n.name,amount:SCAM.amount,claim:SCAM.claim}); });
+$('#settle-btn').addEventListener('click',()=>send({cmd:'settle'}));
 $('#share').addEventListener('click',()=>{ const url='https://0gtown.ai.gg'; const text='I watched an AI shopkeeper get scammed, learn the lesson (anchored on 0G Storage), and refuse me next time. Their minds are verifiable. Play 0gtown:';
   if(navigator.share){ navigator.share({title:'0gtown',text,url}).catch(()=>{}); }
   else{ navigator.clipboard?.writeText(text+' '+url); toast('share text copied'); } });
