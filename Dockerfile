@@ -16,7 +16,7 @@ RUN corepack enable
 # Engine, pinned to match the kit submodule (replay + cognition + gamekit + npc-agent + onchain).
 # Kept out of the later COPY via .dockerignore so it isn't clobbered.
 RUN git clone https://github.com/jianmliu/aigg-agent-kit.git kit \
-  && git -C kit checkout f0f86e79b47749d85d8ef5b7608775ef82073c1e
+  && git -C kit checkout f375e950c51bb0ed008db48627a5b5535aac9c39
 
 # Install deps first for better layer caching (workspace resolves kit/packages/*).
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
