@@ -30,6 +30,17 @@ services:
         sync: false            # SECRET — set in the Render dashboard; use a low-balance dedicated wallet
       - key: ZEROG_SKIP_DEPOSIT
         sync: false            # optional: set "1" to reuse an already-funded compute ledger (skip boot deposit)
+      - key: FAIRTICK
+        value: "1"             # autonomous NPC↔NPC scams + gossip between visitors (deterministic, zero 0G cost)
+      - key: FAIRTICK_MS
+        value: "6000"          # a fresh street beat every ~6s (while someone is watching)
+      - key: ECON_BILLS
+        value: "1"             # seeded zero-sum "bills & windfalls" churn (in-process; escrow settles on-chain only if ECON_ONCHAIN=1)
+      # On-chain native-$0G settlement — enable deliberately (needs NPC_MNEMONIC + a funded treasury):
+      # - key: ECON_ONCHAIN
+      #   value: "1"
+      # - key: NPC_MNEMONIC
+      #   sync: false          # SECRET — derives each NPC's 0G EOA
 
     # Optional — keep replay logs (runs/*.jsonl) across deploys/restarts (~+$1-2/mo).
     # Without this the recorder uses the ephemeral filesystem (fine for a demo; logs reset on redeploy).
