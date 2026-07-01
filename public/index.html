@@ -216,7 +216,6 @@ button:disabled{ opacity:.4; cursor:not-allowed }
       <button id="scam" class="act scam" disabled>try a scam ✦</button>
       <button id="borrow-btn" class="act lend" disabled>ask for credit ⟳</button>
       <button id="extort-btn" class="act crime" disabled>shake down ⚔</button>
-      <button id="settle-btn" class="act settle">settle to 0G chain ⛓</button>
     </div>
   </section>
 
@@ -408,7 +407,6 @@ $('#borrow-btn').addEventListener('click',()=>{ if(!state.cur)return; const n=by
   pushLog(state.cur,{k:'me',t:`(asks ${n.name} for ${BORROW} $0G on credit)`}); send({cmd:'borrow',npc:n.name,amount:BORROW}); });
 $('#extort-btn').addEventListener('click',()=>{ if(!state.cur)return; const n=byId(state.cur);
   pushLog(state.cur,{k:'me',t:'(leans in) Nice stall — shame if something happened to it.'}); send({cmd:'extort',npc:n.name}); });
-$('#settle-btn').addEventListener('click',()=>send({cmd:'settle'}));
 $('#share').addEventListener('click',()=>{ const url='https://0gtown.ai.gg'; const text='I watched an AI shopkeeper get scammed, learn the lesson (anchored on 0G Storage), and refuse me next time. Their minds are verifiable. Play 0gtown:';
   if(navigator.share){ navigator.share({title:'0gtown',text,url}).catch(()=>{}); }
   else{ navigator.clipboard?.writeText(text+' '+url); toast('share text copied'); } });
