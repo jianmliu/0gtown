@@ -61,7 +61,16 @@ Smoke checks: `pnpm spike` (server-side learn loop), `tsx src/live-check.ts` (fu
 | `ZEROG_NET` | `mainnet` (TeeML services, real TEE badges) or `testnet`. Default `testnet`. |
 | `ZEROGTOWN_STORAGE` | `1` to anchor beliefs to 0G Storage. |
 | `ZEROG_SKIP_DEPOSIT` | `1` to reuse an already-funded ledger (no deposit on boot). |
+| `ECON_ONCHAIN` | `1` to settle each NPC's $0G on **0G EVM** (native coin). Needs `NPC_MNEMONIC` + treasury `ZEROG_WALLET_PK`. `settle` and post-scam auto-reconcile then move real $0G; the UI shows each NPC's 0G EOA + on-chain balance. Off → in-process only. |
+| `NPC_MNEMONIC` | BIP-44 mnemonic that derives each NPC's 0G EOA (service-side only, never the browser). |
+| `ECON_WEI_PER_UNIT` / `ECON_RECONCILE_MS` | wei per 1 $0G unit (default `0.01`), and the debounce before a balance-changing event auto-settles on-chain (default `12000`). |
+| `ECON_BILLS` | `1` enables **bills & windfalls** — a seeded, zero-sum churn that bills a few NPCs into an escrow and pays it to one lucky NPC (town $0G total conserved). Tunables: `ECON_BILLS_MS` (default `15000`), `ECON_BILLS_SEED`. |
 | `ZEROG_DEPOSIT` | $0G deposited into the compute ledger on boot (default `0.05`). |
+| `MEMORY_URL` | Point at a running [`aigg-memory`](https://github.com/jianmliu/aigg-memory) sidecar (`serve /memory/*`) to swap the in-process `FakeKernel` for the **real** episodic→semantic kernel (discernment, reflection, track-record). Unset → deterministic `FakeKernel`. |
+| `MEMORY_TOKEN` | Bearer token for the `aigg-memory` sidecar, if it requires auth. |
+| `MEMORY_REFLECT_URL` | Reflect/dream backend for **belief synthesis on 0G Compute** (the 0G Router `/v1`, OpenAI-compatible — *not* Ollama). Set it and a scam generalizes: NPCs refuse a *reworded* pitch, not just the exact string. Unset → retrieval-only. See [`docs/PHASE-1-COGNITION.md`](docs/PHASE-1-COGNITION.md). |
+| `MEMORY_REFLECT_MODEL` / `MEMORY_REFLECT_BACKEND` | 0G-served model (e.g. `zai-org/GLM-5-FP8`) and backend (`http`) for the reflect call. |
+| `MEMORY_REFLECT_SHIM` | `1` (with live 0G) starts a local OpenAI-compatible shim over the **same TEE broker as `talk`**, so belief synthesis is **enclave-verified too** — not just 0G Router inference. Overrides `MEMORY_REFLECT_URL`. Optional `MEMORY_REFLECT_SHIM_PORT`/`_TOKEN`. |
 | `PORT` | http + ws port (default `8137`; a PaaS provides `$PORT`). |
 
 ## How it works

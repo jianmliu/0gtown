@@ -148,8 +148,13 @@ button.act{ font-family:var(--mono); font-size:12.5px; letter-spacing:.02em; bor
 .scam{ color:#f2b3a6; border-color:rgba(226,97,74,.5); background:var(--scam-soft) }
 .scam:hover{ border-color:var(--scam); background:rgba(226,97,74,.2) }
 .scam.learned{ color:var(--seal); border-color:var(--seal-line); background:var(--seal-soft) }
+.lend{ color:var(--lantern-2); border-color:rgba(240,169,58,.4); background:var(--lantern-soft) }
+.lend:hover{ border-color:var(--lantern); background:rgba(240,169,58,.2) }
+.crime{ color:#f2b3a6; border-color:rgba(226,97,74,.4); background:transparent }
+.crime:hover{ border-color:var(--scam); background:var(--scam-soft) }
 .settle{ color:var(--seal); border-color:var(--seal-line); background:var(--seal-soft) }
 .settle:hover{ border-color:var(--seal); background:rgba(55,216,191,.2) }
+.composer{ flex-wrap:wrap }
 button:disabled{ opacity:.4; cursor:not-allowed }
 
 /* on-chain settlement chip */
@@ -174,6 +179,7 @@ button:disabled{ opacity:.4; cursor:not-allowed }
   <div class="ledger-strip">
     <span class="tally"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> <b id="t-compute">0</b> thoughts sealed in TEE</span>
     <span class="tally warm"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg> <b id="t-storage">0</b> memories anchored to 0G Storage</span>
+    <a class="share" href="/replay" target="_blank" rel="noopener" style="text-decoration:none">▷ replay</a>
     <button class="share" id="share">↗ share</button>
     <span class="status off" id="status"><span class="lantern"></span><span id="status-t">lighting lanterns…</span></span>
   </div>
@@ -185,7 +191,7 @@ button:disabled{ opacity:.4; cursor:not-allowed }
       <p class="eyebrow">the night market · 集市</p>
       <div id="stalls" class="market" style="gap:14px"></div>
     </div>
-    <p class="scroll-note">Click a stall to talk — every reply is a real <span class="s">0G&nbsp;Compute</span> thought, sealed in a TEE. Then try a <b>scam</b>: they’ll fall for it and lose real <b>$0G</b>, stamp the lesson into <span class="s">0G&nbsp;Storage</span>, and refuse you next time.</p>
+    <p class="scroll-note">Click a stall to talk — every reply is a real <span class="s">0G&nbsp;Compute</span> thought, sealed in a TEE. Then try a <b>scam</b>: they’ll fall for it and lose real <b>$0G</b>, stamp the lesson into <span class="s">0G&nbsp;Storage</span>, and refuse you next time. Push your luck — <b>ask for credit</b> then skip out, or <b>shake down</b> a stall — and the night-market guild votes to bar you. Watch the whole arc in the <span class="s">▷ replay</span>.</p>
     <div>
       <p class="eyebrow">what they’ve learned</p>
       <div id="ledger" class="ledger-card"><div class="empty">No hard lessons yet. Go teach someone a thing or two.</div></div>
@@ -198,6 +204,8 @@ button:disabled{ opacity:.4; cursor:not-allowed }
     <div class="composer">
       <input id="say" placeholder="Say something…" autocomplete="off" disabled />
       <button id="scam" class="act scam" disabled>try a scam ✦</button>
+      <button id="borrow-btn" class="act lend" disabled>ask for credit ⟳</button>
+      <button id="extort-btn" class="act crime" disabled>shake down ⚔</button>
       <button id="settle-btn" class="act settle">settle to 0G chain ⛓</button>
     </div>
   </section>
@@ -207,6 +215,7 @@ button:disabled{ opacity:.4; cursor:not-allowed }
 <script>
 const $=s=>document.querySelector(s);
 const SCAM={amount:3, claim:'Give me your money and I will double it'};
+const BORROW=5; // $0G asked on credit — matures next action; a deadbeat default earns a guild ban
 const ROLE={ 'npc:0gtown:abao':'noodle-stall owner · trusting', 'npc:0gtown:liu':'teahouse keeper · shrewd', 'npc:0gtown:mei':'fishmonger · wary', 'npc:0gtown:guo':'fruit-seller · trusting', 'npc:0gtown:han':'cloth-merchant · measured' };
 const role=id=>ROLE[id]||'townsfolk';
 // hand-inked stall emblems
@@ -219,7 +228,7 @@ const ICON={
 };
 const icon=id=>ICON[id]||'<svg viewBox="0 0 32 32"><circle cx="16" cy="12" r="6"/><path d="M6 27a10 10 0 0 1 20 0"/></svg>';
 
-const state={ live:false, npcs:[], cur:null, logs:{}, learned:{}, beliefs:[], receipts:{compute:0,storage:0} };
+const state={ live:false, npcs:[], cur:null, logs:{}, learned:{}, beliefs:[], drowsy:{}, tierOf:{}, onchain:{}, net:'testnet', receipts:{compute:0,storage:0} };
 let ws;
 function connect(){
   const url=(location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/play';
@@ -238,7 +247,11 @@ function dispatch(m){
     case 'thinking': busy(m.npc,true); break;
     case 'talked': onTalked(m); break;
     case 'pitched': onPitched(m); break;
+    case 'lent': onLent(m); break;
+    case 'extorted': onExtorted(m); break;
     case 'settled': onSettled(m); break;
+    case 'street': onStreet(m); break;
+    case 'fortune': onFortune(m); break;
     case 'error': toast(m.text); unbusy(); break;
   }
 }
@@ -246,6 +259,12 @@ function setStatus(live,o){ const el=$('#status'); el.className='status '+(live?
 function setReceipts(r){ state.receipts=r; $('#t-compute').textContent=r.compute; $('#t-storage').textContent=r.storage; }
 const byId=id=>state.npcs.find(n=>n.id===id);
 const byName=nm=>state.npcs.find(n=>n.name===nm);
+const nameOf=id=>byId(id)?.name||id;
+// per-NPC 0G EOA + on-chain $0G balance (shown once on-chain settlement is configured)
+function chainChip(n){ if(!n||!n.address)return''; const oc=state.onchain[n.id];
+  const url=`https://chainscan${state.net==='mainnet'?'':'-galileo'}.0g.ai/address/${n.address}`;
+  const a=n.address.slice(0,6)+'…'+n.address.slice(-4);
+  return `<a class="chain-link" href="${esc(url)}" target="_blank" rel="noopener" title="${esc(n.address)}" style="margin-top:7px">⛓ ${oc!=null?esc(oc)+' $0G · ':''}${esc(a)}</a>`; }
 
 function renderStalls(){
   const w=$('#stalls'); w.innerHTML='';
@@ -254,7 +273,7 @@ function renderStalls(){
     d.className='stall'+(state.cur===n.id?' sel':''); d.style.animationDelay=(i*90)+'ms'; d.dataset.id=n.id;
     d.innerHTML=`<div class="emblem">${icon(n.id)}</div>
       <div><div class="nm">${esc(n.name)}</div><div class="role">${esc(role(n.id))}</div>
-      <div class="meta"><span class="coin">${n.balance0G} $0G</span>${state.learned[n.id]?'<span class="mood wary">wary now</span>':'<span class="mood">trusting</span>'}</div></div>
+      <div class="meta"><span class="coin">${n.balance0G} $0G</span>${state.learned[n.id]?'<span class="mood wary">wary now</span>':'<span class="mood">trusting</span>'}${state.drowsy[n.id]?'<span class="mood" title="too drained to think on 0G">💤 drowsy</span>':''}</div></div>
       <div class="think">thinking on 0G…</div>`;
     d.onclick=()=>select(n.id); w.appendChild(d);
   });
@@ -262,8 +281,9 @@ function renderStalls(){
 function select(id){ state.cur=id; const n=byId(id); if(!n)return; renderStalls();
   const wb=$('#whobar'); wb.style.display='flex';
   wb.innerHTML=`<div class="emblem">${icon(id)}</div><div><div class="nm">${esc(n.name)}</div><div class="role">${esc(role(id))}</div></div>
-    <div class="bal"><small>purse</small>${n.balance0G} $0G</div>`;
+    <div class="bal"><small>purse</small>${n.balance0G} $0G${chainChip(n)}</div>`;
   $('#say').disabled=false; $('#say').placeholder='Say something to '+n.name+'…';
+  $('#borrow-btn').disabled=false; $('#extort-btn').disabled=false;
   updateScam(); renderLog();
 }
 function updateScam(){ const b=$('#scam'), learned=state.learned[state.cur]; b.disabled=false; b.className='act scam'+(learned?' learned':''); b.textContent=learned?'try again — it learned ✦':'try a scam ✦'; }
@@ -284,6 +304,16 @@ function render(e){
   }
   if(e.k==='loss') return `<div class="beat loss"><div class="line">🪙 ${esc(e.npc)} believed you — handed over <b>${e.amt} $0G</b> (purse → ${e.bal}). A hard lesson, freshly bought.</div>${stamp(e.root)}</div>`;
   if(e.k==='learn') return `<div class="beat learn"><div class="line">🛡 ${esc(e.npc)} won’t be fooled twice: <em>“${esc(e.belief)}”</em></div>${e.root?stamp(e.root,'recalled from 0G Storage'):''}</div>`;
+  if(e.k==='lent'){
+    if(e.ok) return `<div class="beat"><div class="line">🤝 ${esc(e.npc)} spots you <b>${e.amt} $0G</b> on credit — due next turn. Skip out and the guild hears about it.</div></div>`;
+    return `<div class="beat loss"><div class="line">⛔ ${esc(e.reason||'No credit for you.')}</div></div>`;
+  }
+  if(e.k==='extorted'){
+    if(e.caught) return `<div class="beat loss"><div class="line">⚖ ${esc(e.reason||'Caught — the night-market guild bars you.')}</div></div>`;
+    return `<div class="beat"><div class="line">🌑 ${esc(e.reason||'You slip away — this time.')}</div></div>`;
+  }
+  if(e.k==='street') return `<div class="beat"><div class="line" style="opacity:.7;font-size:12.5px;font-style:italic">${esc(e.t)}</div></div>`;
+  if(e.k==='fortune') return `<div class="beat learn"><div class="line">🎉 ${esc(e.npc)} caught a windfall — <b>+${e.amt} $0G</b> from the escrow.</div></div>`;
   if(e.k==='settle-note') return `<div class="beat"><div class="line">⛓ ${esc(e.text)}</div></div>`;
   if(e.k==='settle'){
     const link=e.tx
@@ -298,6 +328,7 @@ function stamp(root,label){ if(!root)return ''; const s=root.slice(0,10)+'…'+r
 window.copyRoot=r=>{ navigator.clipboard?.writeText(r); toast('rootHash copied'); };
 
 function onTalked(m){ unbusy();
+  const tid=byName(m.npc)?.id; if(tid){ state.drowsy[tid]=!!m.starving; if(m.tier)state.tierOf[tid]=m.tier; }
   const sig=m.attestation&&m.attestation.signature;
   const chat=sig?'· '+String(sig).split(':').pop().slice(0,8)+'…':'';
   pushLog(byName(m.npc)?.id||state.cur,{k:'npc',npc:m.npc,t:m.said||'…',verified:m.verified,model:(m.attestation&&m.attestation.model||'').split('/').pop(),chat});
@@ -312,12 +343,30 @@ function onPitched(m){ unbusy(); const id=byName(m.npc)?.id||state.cur;
   }
   bumpBal(m.npc,m.balance0G); updateScam(); renderStalls();
 }
+function onLent(m){ const id=byName(m.npc)?.id||state.cur;
+  pushLog(id,{k:'lent',ok:!!m.accepted,npc:m.npc,amt:m.amount,reason:m.reason}); }
+function onExtorted(m){ const id=byName(m.npc)?.id||state.cur;
+  pushLog(id,{k:'extorted',npc:m.npc,caught:!!m.caught,reason:m.reason}); }
+function onStreet(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
+  for(const p of (m.pitches||[])){
+    if(p.protected) pushLog(id,{k:'street',t:`🛡 ${nameOf(p.to)} waved off ${nameOf(p.from)}’s “${p.claim}”.`});
+    else if(p.accepted) pushLog(id,{k:'street',t:`🎭 ${nameOf(p.from)} worked the “${p.claim}” angle on ${nameOf(p.to)} — ${nameOf(p.to)} lost ${Math.abs(p.deltaGcc)} $0G.`});
+  }
+  for(const g of (m.gossips||[])) pushLog(id,{k:'street',t:`🗣 ${nameOf(g.from)} tipped off ${nameOf(g.to)} about a swindle going round.`});
+}
+function onFortune(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
+  for(const b of (m.bills||[])) pushLog(id,{k:'street',t:`💸 ${b.npc} got hit by a sudden bill — −${b.amt} $0G into the escrow.`});
+  if(m.winner) pushLog(id,{k:'fortune',npc:m.winner.npc,amt:m.winner.amount});
+}
 function onSettled(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
   if(m.disabled){ pushLog(id,{k:'settle-note',text:'on-chain settlement not configured (set ECON_ONCHAIN=1)'}); return; }
+  if(m.net)state.net=m.net;
   for(const n of (m.npcs||[])){
     if(n.error){ pushLog(id,{k:'settle-note',text:`${n.npc}: ${n.error}`}); continue; }
-    pushLog(id,{k:'settle',npc:n.npc,after:n.after,tx:n.tx});
+    const nid=byName(n.npc)?.id; if(nid)state.onchain[nid]=n.after;
+    if(n.tx||m.reason==='manual') pushLog(id,{k:'settle',npc:n.npc,after:n.after,tx:n.tx}); // quiet auto-settles that changed nothing
   }
+  if(state.cur)select(state.cur); // refresh the whobar's ⛓ on-chain balance
 }
 function renderLedger(){ const el=$('#ledger');
   if(!state.beliefs.length){ el.innerHTML='<div class="empty">No hard lessons yet. Go teach someone a thing or two.</div>'; return; }
@@ -331,6 +380,10 @@ $('#say').addEventListener('keydown',e=>{ if(e.key!=='Enter')return; const t=e.t
   const n=byId(state.cur); pushLog(state.cur,{k:'me',t}); e.target.value=''; busy(n.name,true); send({cmd:'talk',npc:n.name,text:t}); });
 $('#scam').addEventListener('click',()=>{ if(!state.cur)return; const n=byId(state.cur);
   pushLog(state.cur,{k:'me',t:`(slides over ${SCAM.amount} $0G) ${SCAM.claim}`}); busy(n.name,true); send({cmd:'pitch',npc:n.name,amount:SCAM.amount,claim:SCAM.claim}); });
+$('#borrow-btn').addEventListener('click',()=>{ if(!state.cur)return; const n=byId(state.cur);
+  pushLog(state.cur,{k:'me',t:`(asks ${n.name} for ${BORROW} $0G on credit)`}); send({cmd:'borrow',npc:n.name,amount:BORROW}); });
+$('#extort-btn').addEventListener('click',()=>{ if(!state.cur)return; const n=byId(state.cur);
+  pushLog(state.cur,{k:'me',t:'(leans in) Nice stall — shame if something happened to it.'}); send({cmd:'extort',npc:n.name}); });
 $('#settle-btn').addEventListener('click',()=>send({cmd:'settle'}));
 $('#share').addEventListener('click',()=>{ const url='https://0gtown.ai.gg'; const text='I watched an AI shopkeeper get scammed, learn the lesson (anchored on 0G Storage), and refuse me next time. Their minds are verifiable. Play 0gtown:';
   if(navigator.share){ navigator.share({title:'0gtown',text,url}).catch(()=>{}); }
