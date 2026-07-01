@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { SharedWorld, FairTick, type FairActor } from '@aigg/gamekit';
 import { createRecorder, viewerDir } from '@aigg/replay';
-import { InMemoryStore, Metabolism } from '@aigg/npc-agent';
+import { InMemoryStore, Metabolism, AiggMemoryClient } from '@aigg/npc-agent';
 import type { InferenceProvider } from '@aigg/npc-agent';
 import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction, misconductTopic, attemptCrime, corpusPath } from '@aigg/cognition';
 import { buildZerogProvider } from './zerog-provider';
@@ -116,7 +116,21 @@ export async function startServer(opts: { port?: number } = {}) {
     starvingBelowGcc: 0.05,
     defaultTierId: 'steady',
   });
-  const world = new SharedWorld({ store, provider, rooms: [ROOM], metabolism });
+  // Step 3 (autonomous learning): give the engine world its OWN memory so FairTick's NPC↔NPC
+  // pitches form beliefs and gossip() diffuses — marks wise up to a pitcher and warn peers, no
+  // visitor needed. Namespaced ('fairtown') apart from the server-side Cognition learn-gate that
+  // handles the visitor path, so the two never collide; and since every belief is keyed to a
+  // known counterpart, a fresh visitor's unique id is unknown to all of them → the marquee scam
+  // still lands. Model-free (remember/discernment); memoryModel only deepens it on the rich tier.
+  const worldMemory = process.env.MEMORY_URL
+    ? new AiggMemoryClient({ baseUrl: process.env.MEMORY_URL, token: process.env.MEMORY_TOKEN })
+    : undefined;
+  const world = new SharedWorld({
+    store, provider, rooms: [ROOM], metabolism,
+    ...(worldMemory ? { memory: worldMemory, memoryNamespace: 'fairtown' } : {}),
+    ...(worldMemory && reflectUrl ? { memoryModel: { aiggUrl: reflectUrl, model: process.env.MEMORY_REFLECT_MODEL, backend: process.env.MEMORY_REFLECT_BACKEND ?? 'http' } } : {}),
+  });
+  if (worldMemory) console.log('[0gtown] world memory: FairTick beliefs + gossip ON (ns: fairtown)');
   for (const t of TOWNSFOLK) {
     await world.createNpc({ id: t.id, name: t.name, owner: 'system:0gtown', room: ROOM, startGcc: t.startGcc, background: t.background });
   }

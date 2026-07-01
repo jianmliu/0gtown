@@ -1,12 +1,13 @@
 # Phase 2 — A town that lives between visitors, file by file
 
-> **Status: Steps 1 & 2 implemented** (`src/server.ts` + `public/index.html`). Metabolism is
-> surfaced ($0G-vitality tiers + `starving`), and `FairTick` runs autonomous NPC↔NPC scams/
-> gossip behind `FAIRTICK=1`, client-gated, broadcasting street beats + live balances. Verified:
-> `pnpm typecheck`, a FairTick smoke (16 autonomous pitches, live balance broadcasts, loop
-> pauses when unwatched), and `pnpm spike` green (loop off by default). **Step 3** (full
-> autonomous *learning* via `SharedWorld.memory`) remains optional — without it, marks don't
-> yet wise up (autonomous pitches keep landing until marks go drowsy/broke).
+> **Status: all three steps implemented** (`src/server.ts` + `public/index.html`). Metabolism is
+> surfaced ($0G-vitality tiers + `starving`); `FairTick` runs autonomous NPC↔NPC scams/gossip
+> behind `FAIRTICK=1`, client-gated, broadcasting street beats + live balances; and Step 3 gives
+> the world its own namespaced memory (`MEMORY_URL`) so NPCs **wise up on their own** and warn
+> peers. Verified: `pnpm typecheck`; a FairTick smoke (16 autonomous pitches, live balances, loop
+> pauses when unwatched); a **live Step-3 integration test against a running `aigg-memory` sidecar**
+> — 58 autonomous pitches, 55 refused after learning + gossip, and a fresh visitor's marquee scam
+> still lands (not pre-empted); and `pnpm spike` green (both loop and Step-3 inert by default).
 
 Goal: make 0gtown feel alive when no one is typing. Two engine capabilities, both
 already in `@aigg/*`:
@@ -123,10 +124,12 @@ Notes:
 - If an agent action loop is ever added, pass `opts.skip` so an NPC isn't both passively pitched
   and actively choosing (the engine's cost-doubling guard).
 
-## Step 3 — Full autonomous learning (optional, builds on Phase 1)  ·  effort M
+## Step 3 — Full autonomous learning (IMPLEMENTED)  ·  effort M
 
-To make NPCs *wise up on their own* and warn peers, give `SharedWorld` a memory so its
-learn-gate + `gossip()` persist beliefs:
+Give `SharedWorld` its own **namespaced** memory so its learn-gate + `gossip()` persist beliefs.
+The namespace (`fairtown`) keeps these engine beliefs apart from the server-side `Cognition`
+corpus that handles visitors, and every belief is keyed to a **known counterpart** — so a fresh
+visitor's unique id matches nothing, and the marquee scam still lands (verified live). Shipped as:
 
 ```ts
 import { AiggMemoryClient } from '@aigg/npc-agent';
