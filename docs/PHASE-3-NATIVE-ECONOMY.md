@@ -27,7 +27,15 @@ and a pure-$0G world has none. Prediction markets (Step 4) are denominated direc
 So Phase 3 is: make settlement *first-class* (Step 1), add *luck* (Step 2) and an *econ
 replay stream* (Step 3), with prediction markets optional (Step 4).
 
-## Step 1 — First-class native-$0G settlement  ·  effort M
+## Step 1 — First-class native-$0G settlement  ·  effort M · **IMPLEMENTED**
+
+> Shipped in `src/server.ts` + `public/index.html`: `roomSnapshot` exposes each NPC's 0G EOA;
+> `reconcileAll(reason)` reconciles all NPCs → broadcasts `{type:'settled', …}`; `settle` uses it;
+> and a debounced `scheduleReconcile` auto-settles after balance-changing events (scam, autonomous
+> street pitch), gated on a watcher. The whobar shows the EOA + live on-chain $0G with an explorer
+> link. Verified hermetically with `FakeNativeChain` (addresses exposed; manual settle deposits all
+> five NPCs; a 3 $0G scam auto-withdraws 10→7 on-chain) + `pnpm typecheck` + `pnpm spike` (settler
+> off by default → disabled path, no regression). A `settler` test seam was added to `startServer`.
 
 Today `settle` is a manual button that reconciles once. Promote it:
 

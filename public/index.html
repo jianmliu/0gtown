@@ -228,7 +228,7 @@ const ICON={
 };
 const icon=id=>ICON[id]||'<svg viewBox="0 0 32 32"><circle cx="16" cy="12" r="6"/><path d="M6 27a10 10 0 0 1 20 0"/></svg>';
 
-const state={ live:false, npcs:[], cur:null, logs:{}, learned:{}, beliefs:[], drowsy:{}, tierOf:{}, receipts:{compute:0,storage:0} };
+const state={ live:false, npcs:[], cur:null, logs:{}, learned:{}, beliefs:[], drowsy:{}, tierOf:{}, onchain:{}, net:'testnet', receipts:{compute:0,storage:0} };
 let ws;
 function connect(){
   const url=(location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/play';
@@ -259,6 +259,11 @@ function setReceipts(r){ state.receipts=r; $('#t-compute').textContent=r.compute
 const byId=id=>state.npcs.find(n=>n.id===id);
 const byName=nm=>state.npcs.find(n=>n.name===nm);
 const nameOf=id=>byId(id)?.name||id;
+// per-NPC 0G EOA + on-chain $0G balance (shown once on-chain settlement is configured)
+function chainChip(n){ if(!n||!n.address)return''; const oc=state.onchain[n.id];
+  const url=`https://chainscan${state.net==='mainnet'?'':'-galileo'}.0g.ai/address/${n.address}`;
+  const a=n.address.slice(0,6)+'…'+n.address.slice(-4);
+  return `<a class="chain-link" href="${esc(url)}" target="_blank" rel="noopener" title="${esc(n.address)}" style="margin-top:7px">⛓ ${oc!=null?esc(oc)+' $0G · ':''}${esc(a)}</a>`; }
 
 function renderStalls(){
   const w=$('#stalls'); w.innerHTML='';
@@ -275,7 +280,7 @@ function renderStalls(){
 function select(id){ state.cur=id; const n=byId(id); if(!n)return; renderStalls();
   const wb=$('#whobar'); wb.style.display='flex';
   wb.innerHTML=`<div class="emblem">${icon(id)}</div><div><div class="nm">${esc(n.name)}</div><div class="role">${esc(role(id))}</div></div>
-    <div class="bal"><small>purse</small>${n.balance0G} $0G</div>`;
+    <div class="bal"><small>purse</small>${n.balance0G} $0G${chainChip(n)}</div>`;
   $('#say').disabled=false; $('#say').placeholder='Say something to '+n.name+'…';
   $('#borrow-btn').disabled=false; $('#extort-btn').disabled=false;
   updateScam(); renderLog();
@@ -349,10 +354,13 @@ function onStreet(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(
 }
 function onSettled(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
   if(m.disabled){ pushLog(id,{k:'settle-note',text:'on-chain settlement not configured (set ECON_ONCHAIN=1)'}); return; }
+  if(m.net)state.net=m.net;
   for(const n of (m.npcs||[])){
     if(n.error){ pushLog(id,{k:'settle-note',text:`${n.npc}: ${n.error}`}); continue; }
-    pushLog(id,{k:'settle',npc:n.npc,after:n.after,tx:n.tx});
+    const nid=byName(n.npc)?.id; if(nid)state.onchain[nid]=n.after;
+    if(n.tx||m.reason==='manual') pushLog(id,{k:'settle',npc:n.npc,after:n.after,tx:n.tx}); // quiet auto-settles that changed nothing
   }
+  if(state.cur)select(state.cur); // refresh the whobar's ⛓ on-chain balance
 }
 function renderLedger(){ const el=$('#ledger');
   if(!state.beliefs.length){ el.innerHTML='<div class="empty">No hard lessons yet. Go teach someone a thing or two.</div>'; return; }

@@ -28,6 +28,7 @@ import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Pol
 import { buildZerogProvider } from './zerog-provider';
 import { startZerogOpenAiShim } from './zerog-openai-shim';
 import { buildSettler } from './native-settler';
+import type { Native0gSettlementLayer } from '@aigg/onchain';
 import { FallbackProvider } from './fallback-provider';
 import { ZeroGStorageClient, ZEROG_TESTNET } from './zerog-storage';
 
@@ -76,12 +77,12 @@ const fallbackLine = (npcId: string) => npcId.includes('abao')
   ? 'Mm — give me a second, the broth needs stirring. What were you saying?'
   : 'Hm, the tea’s still steeping — say that again?';
 
-export async function startServer(opts: { port?: number } = {}) {
+export async function startServer(opts: { port?: number; settler?: Native0gSettlementLayer | null } = {}) {
   const port = opts.port ?? Number(process.env.PORT || 8137);
 
   // 1. brain — live 0G Compute when funded, else a scripted fallback
   const live = await buildZerogProvider();
-  const settler = await buildSettler(); // null when ECON_ONCHAIN!=='1' or keys missing
+  const settler = opts.settler !== undefined ? opts.settler : await buildSettler(); // null when ECON_ONCHAIN!=='1' or keys missing (test seam: inject a hermetic settler)
   const provider: InferenceProvider = live ?? new FallbackProvider();
   const liveMode = !!live;
   console.log(`[0gtown] brain: ${liveMode ? 'LIVE 0G Compute (TEE)' : 'fallback (scripted — no live 0G)'}`);
@@ -245,7 +246,8 @@ export async function startServer(opts: { port?: number } = {}) {
     const npcs = await world.npcsInRoom(ROOM);
     return {
       type: 'room', room: ROOM,
-      npcs: npcs.map((n) => ({ id: n.id, name: n.name, balance0G: round0G(n.balanceGcc), active: n.balanceGcc > 0 })),
+      // address is the NPC's deterministic 0G EOA (cheap, no RPC); on-chain balance arrives with 'settled'.
+      npcs: npcs.map((n) => ({ id: n.id, name: n.name, balance0G: round0G(n.balanceGcc), active: n.balanceGcc > 0, address: settler?.addressOf(n.id) })),
     };
   }
 
@@ -305,6 +307,44 @@ export async function startServer(opts: { port?: number } = {}) {
   //     never churns the town (or drains balances) with nobody there. Enable with FAIRTICK=1.
   const clients = new Set<WebSocket>();
   const broadcast = (o: unknown) => { const s = JSON.stringify(o); for (const c of clients) { try { c.send(s); } catch { /* peer gone */ } } };
+
+  // 6c. native-$0G economy (Step 1) — reconcile each NPC's on-chain 0G balance to the in-process
+  //     ledger and broadcast the result. Gated on a watcher (real $0G txs — don't churn unwatched)
+  //     and serialized (no overlapping runs). Gas is handled by the settler's deposit reserve.
+  const settleNet = (process.env.ZEROG_NET || 'testnet').toLowerCase() === 'mainnet' ? 'mainnet' : 'testnet';
+  const explorerTx = (h: string) => `https://chainscan${settleNet === 'mainnet' ? '' : '-galileo'}.0g.ai/tx/${h}`;
+  let reconciling = false;
+  let reconcileTimer: ReturnType<typeof setTimeout> | undefined;
+  async function reconcileAll(reason: string): Promise<void> {
+    if (!settler || reconciling || clients.size === 0) return;
+    reconciling = true;
+    const npcs: any[] = [];
+    try {
+      for (const t of TOWNSFOLK) {
+        try {
+          const target = await world.balanceGcc(t.id);
+          const tx = await settler.reconcile(t.id, target);
+          const after = await settler.balanceOf(t.id);
+          npcs.push({ npc: t.name, id: t.id, address: settler.addressOf(t.id), after: round0G(after ?? 0), tx: tx ? { ...tx, url: explorerTx(tx.txHash) } : null });
+          if (tx) {
+            rec.tick(++replayT);
+            rec.event('town.settle', { actor: t.id, by: 'engine', data: { units: tx.units, direction: tx.direction, txHash: tx.txHash, address: tx.address, reason } });
+            rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
+            rec.flush();
+          }
+        } catch (e: any) {
+          npcs.push({ npc: t.name, id: t.id, error: e?.message?.slice(0, 120) ?? 'settle failed' });
+        }
+      }
+      broadcast({ type: 'settled', net: settleNet, reason, npcs });
+    } finally { reconciling = false; }
+  }
+  /** Debounced auto-settle after a balance-changing event (a scam), so bursts collapse into a
+   *  single on-chain reconcile instead of a tx per event. No-op without the on-chain settler. */
+  function scheduleReconcile(reason: string): void {
+    if (!settler || reconcileTimer) return;
+    reconcileTimer = setTimeout(() => { reconcileTimer = undefined; void reconcileAll(reason); }, Number(process.env.ECON_RECONCILE_MS || 12000));
+  }
   const fairActors: FairActor[] = [
     { npcId: 'npc:0gtown:mei', role: 'pitcher', claims: ['double your money in a day', 'a sure-thing rice-futures tip'], amountGcc: 2, room: ROOM },
     { npcId: 'npc:0gtown:han', role: 'pitcher', claims: ['a lucky charm — never lose again'], amountGcc: 2, room: ROOM },
@@ -330,6 +370,7 @@ export async function startServer(opts: { port?: number } = {}) {
       rec.flush();
       broadcast({ type: 'street', pitches: r.pitches, gossips: r.gossips }); // ambient beats
       broadcast(await roomSnapshot());                                        // balances shifted
+      if (r.pitches.some((p) => p.accepted)) scheduleReconcile('street');     // autonomous scams moved $0G
     } catch (e: any) { console.warn('[0gtown] fair tick skipped:', e?.message); }
   }
 
@@ -479,6 +520,8 @@ export async function startServer(opts: { port?: number } = {}) {
           // CONSOLIDATE: dream on 0G to generalize the lesson (off the reply path; its network
           // latency lands the belief tick after this pitch's replay frames). No-op without 0G reflect.
           void dreamConsolidate(npc.id);
+          // SETTLE: the scam moved $0G — debounced reconcile to 0G Chain. No-op without the settler.
+          scheduleReconcile('scam');
 
           // keep the 0G Storage belief anchoring (library ⑤) — unchanged
           let root: string | undefined;
@@ -614,29 +657,8 @@ export async function startServer(opts: { port?: number } = {}) {
         if (msg.cmd === 'settle') {
           if (!settler) return sendJson({ type: 'settled', disabled: true, reason: 'on-chain settlement not configured' });
           if (rateLimited(8000)) return sendJson({ type: 'error', text: 'settling — give it a moment' });
-          const net = (process.env.ZEROG_NET || 'testnet').toLowerCase() === 'mainnet' ? 'mainnet' : 'testnet';
-          const explorerTx = (h: string) => `https://chainscan${net === 'mainnet' ? '' : '-galileo'}.0g.ai/tx/${h}`;
-          const results: any[] = [];
-          for (const t of TOWNSFOLK) {
-            try {
-              const target = await world.balanceGcc(t.id);
-              const before = await settler.balanceOf(t.id);
-              const tx = await settler.reconcile(t.id, target);
-              const after = await settler.balanceOf(t.id);
-              results.push({ npc: t.name, id: t.id, address: settler.addressOf(t.id), target: round0G(target), before: round0G(before ?? 0), after: round0G(after ?? 0), tx: tx ? { ...tx, url: explorerTx(tx.txHash) } : null });
-              if (tx) {
-                try {
-                  rec.tick(++replayT);
-                  rec.event('town.settle', { actor: t.id, by: 'npc', data: { units: tx.units, direction: tx.direction, txHash: tx.txHash, address: tx.address } });
-                  rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
-                  rec.flush();
-                } catch (e: any) { console.warn('[0gtown] settle replay skipped:', e?.message); }
-              }
-            } catch (e: any) {
-              results.push({ npc: t.name, id: t.id, error: e?.message?.slice(0, 120) ?? 'settle failed' });
-            }
-          }
-          return sendJson({ type: 'settled', net, npcs: results });
+          await reconcileAll('manual');   // reconciles all NPCs → broadcasts { type:'settled', … } to every client
+          return;
         }
 
         sendJson({ type: 'error', text: `unknown command: ${msg.cmd}` });
@@ -660,7 +682,7 @@ export async function startServer(opts: { port?: number } = {}) {
     fairTimer = setInterval(() => void runFair(), ms);
     console.log(`[0gtown] living town: FairTick every ${ms}ms (while watched)`);
   }
-  return { server, world, close: () => { if (fairTimer) clearInterval(fairTimer); wss.close(); server.close(); reflectShim?.close(); } };
+  return { server, world, close: () => { if (fairTimer) clearInterval(fairTimer); if (reconcileTimer) clearTimeout(reconcileTimer); wss.close(); server.close(); reflectShim?.close(); } };
 }
 
 if (process.argv[1]?.endsWith('server.ts')) {
