@@ -66,6 +66,7 @@ Smoke checks: `pnpm spike` (server-side learn loop), `tsx src/live-check.ts` (fu
 | `MEMORY_TOKEN` | Bearer token for the `aigg-memory` sidecar, if it requires auth. |
 | `MEMORY_REFLECT_URL` | Reflect/dream backend for **belief synthesis on 0G Compute** (the 0G Router `/v1`, OpenAI-compatible — *not* Ollama). Set it and a scam generalizes: NPCs refuse a *reworded* pitch, not just the exact string. Unset → retrieval-only. See [`docs/PHASE-1-COGNITION.md`](docs/PHASE-1-COGNITION.md). |
 | `MEMORY_REFLECT_MODEL` / `MEMORY_REFLECT_BACKEND` | 0G-served model (e.g. `zai-org/GLM-5-FP8`) and backend (`http`) for the reflect call. |
+| `MEMORY_REFLECT_SHIM` | `1` (with live 0G) starts a local OpenAI-compatible shim over the **same TEE broker as `talk`**, so belief synthesis is **enclave-verified too** — not just 0G Router inference. Overrides `MEMORY_REFLECT_URL`. Optional `MEMORY_REFLECT_SHIM_PORT`/`_TOKEN`. |
 | `PORT` | http + ws port (default `8137`; a PaaS provides `$PORT`). |
 
 ## How it works

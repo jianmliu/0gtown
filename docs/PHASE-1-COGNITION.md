@@ -65,11 +65,17 @@ launch (`aigg-memory serve --aigg-key "$ZEROG_ROUTER_KEY" …` / its env), not f
 | **A (simple)** | 0G Compute **Router** (`/v1`, OpenAI-compatible) | ✅ | ✗ (router billing, not the broker attestation path) | S |
 | **B (purist)** | a tiny local **broker shim** wrapping `ZeroGBrokerProvider` that exposes `/v1/chat/completions`, minting fresh broker headers per call + running `processResponse` | ✅ | ✅ same TEE path as `talk` | M |
 
-Option A gets belief-synthesis onto 0G immediately. Option B (a ~50-line
-`src/zerog-openai-shim.ts`) makes reflection carry the **same TEE attestation** as NPC
-replies, so *both* thinking and learning are enclave-verified — the fully honest version
-of the 0gtown claim. Recommend shipping A first, then B when a TEE badge on consolidation
-is wanted.
+Option A gets belief-synthesis onto 0G immediately. Option B (`src/zerog-openai-shim.ts`)
+makes reflection carry the **same TEE attestation** as NPC replies, so *both* thinking and
+learning are enclave-verified — the fully honest version of the 0gtown claim.
+
+**Both are now implemented.** Option B: set `MEMORY_REFLECT_SHIM=1` (with live 0G) — the
+server starts a local OpenAI-compatible shim over the same `ZeroGBrokerProvider` as `talk`
+and points the reflect backend at it (overrides `MEMORY_REFLECT_URL`; optional
+`MEMORY_REFLECT_SHIM_PORT`/`_TOKEN`). The shim inverts the OpenAI `messages` array back into
+the engine's `{system, prompt}`, calls `provider.complete()`, and surfaces the TEE verdict
+as `0g_tee_verified` / `0g_attestation`. Verified by a shim smoke (auth gate, mapping, TEE
+verdict, healthz) + `pnpm typecheck` + `pnpm spike`.
 
 ## Step 2 — Construct the kernel with a reflect backend  ·  `src/server.ts`
 

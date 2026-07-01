@@ -26,6 +26,7 @@ import { InMemoryStore } from '@aigg/npc-agent';
 import type { InferenceProvider } from '@aigg/npc-agent';
 import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction, misconductTopic, attemptCrime, corpusPath } from '@aigg/cognition';
 import { buildZerogProvider } from './zerog-provider';
+import { startZerogOpenAiShim } from './zerog-openai-shim';
 import { buildSettler } from './native-settler';
 import { FallbackProvider } from './fallback-provider';
 import { ZeroGStorageClient, ZEROG_TESTNET } from './zerog-storage';
@@ -85,6 +86,22 @@ export async function startServer(opts: { port?: number } = {}) {
   const liveMode = !!live;
   console.log(`[0gtown] brain: ${liveMode ? 'LIVE 0G Compute (TEE)' : 'fallback (scripted — no live 0G)'}`);
 
+  // Option B — TEE-verified reflect: run belief synthesis through the SAME broker as talk.
+  // MEMORY_REFLECT_SHIM=1 (+ live 0G) starts a local OpenAI-compatible shim over `live` and
+  // points the memory kernel's reflect backend at it, so the sidecar's dream() is enclave-
+  // verified too. Falls back to MEMORY_REFLECT_URL (e.g. the 0G Router) when off/unavailable.
+  let reflectUrl = process.env.MEMORY_REFLECT_URL;
+  let reflectShim: ReturnType<typeof startZerogOpenAiShim> | undefined;
+  if (process.env.MEMORY_REFLECT_SHIM === '1') {
+    if (live) {
+      reflectShim = startZerogOpenAiShim(live);
+      reflectUrl = reflectShim.url;
+      console.log('[0gtown] reflect shim: TEE-verified belief synthesis on', reflectShim.url);
+    } else {
+      console.warn('[0gtown] MEMORY_REFLECT_SHIM=1 but no live 0G broker → shim off (using MEMORY_REFLECT_URL if set)');
+    }
+  }
+
   // 2. world + LLM townsfolk
   const store = new InMemoryStore();
   const world = new SharedWorld({ store, provider, rooms: [ROOM] });
@@ -106,9 +123,8 @@ export async function startServer(opts: { port?: number } = {}) {
   // 4. social cognition — memory-backed learn-gate + per-peer trust + warning diffusion.
   //    Live aigg-memory sidecar if MEMORY_URL set, else an in-process FakeKernel (deterministic).
   //    One shared TrustLedger is held here so the server can read back trust values for replay.
-  // reflect backend runs belief synthesis on 0G Compute (Router /v1, or the broker shim) — never Ollama.
-  // Unset MEMORY_REFLECT_URL → retrieval-only (remember/select/discernment), exactly today's behaviour.
-  const reflectUrl = process.env.MEMORY_REFLECT_URL;
+  // reflect backend runs belief synthesis on 0G Compute (the broker shim above, or the 0G
+  // Router via MEMORY_REFLECT_URL) — never Ollama. Unset → retrieval-only, today's behaviour.
   const memKernel = process.env.MEMORY_URL
     ? new AiggMemoryKernel({
         baseUrl: process.env.MEMORY_URL,
@@ -577,7 +593,7 @@ export async function startServer(opts: { port?: number } = {}) {
 
   await new Promise<void>((resolve) => server.listen(port, resolve));
   console.log(`[0gtown] http+ws on :${port} — open http://localhost:${port}`);
-  return { server, world, close: () => { wss.close(); server.close(); } };
+  return { server, world, close: () => { wss.close(); server.close(); reflectShim?.close(); } };
 }
 
 if (process.argv[1]?.endsWith('server.ts')) {
