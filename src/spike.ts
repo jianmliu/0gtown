@@ -174,6 +174,19 @@ ws5.close();
   console.log('✓ settle arc: reconcile aligns on-chain balance to the in-process ledger (10→7)');
 }
 
+// --- data-on-chain anchor→verify (hermetic, FakeZeroGTransport) ---
+{
+  const { ZeroGStorageClient, FakeZeroGTransport } = await import('@aigg/data-onchain');
+  const zgFake = new ZeroGStorageClient(new FakeZeroGTransport());
+  const belief = "I won't fall for that scam again.";
+  const root = await zgFake.upload(belief, 'belief');
+  assert.ok(root.startsWith('0x'), 'belief anchored → rootHash');
+  const v = await zgFake.verify(root);
+  assert.ok(v.verified && v.data === belief, 'verify round-trips the exact belief from 0G Storage');
+  assert.equal((await zgFake.verify(root, 'tampered')).verified, false, 'verify rejects a mismatched expectation');
+  console.log('✓ data-on-chain arc: belief anchored → verified round-trip (rootHash tamper-evident)');
+}
+
 console.log('\n--- done ---');
 
 // replay-stream validation — the run file must conform and carry the town events.
