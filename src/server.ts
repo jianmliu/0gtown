@@ -30,7 +30,7 @@ import { startZerogOpenAiShim } from './zerog-openai-shim';
 import { buildSettler } from './native-settler';
 import type { Native0gSettlementLayer } from '@aigg/onchain';
 import { FallbackProvider } from './fallback-provider';
-import { ZeroGStorageClient, ZEROG_TESTNET } from './zerog-storage';
+import { ZeroGStorageClient, ZEROG_TESTNET } from '@aigg/data-onchain';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -693,6 +693,18 @@ export async function startServer(opts: { port?: number; settler?: Native0gSettl
           if (rateLimited(8000)) return sendJson({ type: 'error', text: 'settling — give it a moment' });
           await reconcileAll('manual');   // reconciles all NPCs → broadcasts { type:'settled', … } to every client
           return;
+        }
+
+        if (msg.cmd === 'verify') {
+          if (!zg) return sendJson({ type: 'verified', disabled: true });
+          const rootHash = String(msg.rootHash ?? '');
+          if (!rootHash) return sendJson({ type: 'error', text: 'verify needs a rootHash' });
+          try {
+            const { verified, data } = await zg.verify(rootHash);
+            return sendJson({ type: 'verified', rootHash, verified, data });
+          } catch (e: any) {
+            return sendJson({ type: 'verified', rootHash, verified: false, error: e?.message?.slice(0, 120) });
+          }
         }
 
         sendJson({ type: 'error', text: `unknown command: ${msg.cmd}` });
