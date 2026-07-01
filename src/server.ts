@@ -207,6 +207,7 @@ export async function startServer(opts: { port?: number; settler?: Native0gSettl
         rec.event('town.rap', { actor: s.borrower, by: 'engine', data: { offender: s.borrower, kind: 'default', victim: s.lender } });
         const round = await runRapSanction(rapSheet, polity, s.lender, s.borrower, guildIds, { until: Infinity });
         if (round) {
+          governFeed(round, s.lender);
           rec.event('town.propose', { actor: s.lender, target: s.borrower, by: 'npc', data: { proposer: s.lender, target: s.borrower, topic: misconductTopic(s.borrower), pid: round.pid } });
           for (const [voter, choice] of Object.entries(round.votes)) {
             if (voter === s.lender) continue;
@@ -307,6 +308,15 @@ export async function startServer(opts: { port?: number; settler?: Native0gSettl
   //     never churns the town (or drains balances) with nobody there. Enable with FAIRTICK=1.
   const clients = new Set<WebSocket>();
   const broadcast = (o: unknown) => { const s = JSON.stringify(o); for (const c of clients) { try { c.send(s); } catch { /* peer gone */ } } };
+  // surface a guild sanction vote to every client (the play-by-play was replay-only before).
+  function governFeed(round: any, proposerId: string): void {
+    if (!round) return;
+    const entries = Object.entries(round.votes ?? {});
+    const forN = entries.filter(([, c]) => c === 'for').length;
+    const againstN = entries.filter(([, c]) => c === 'against').length;
+    const proposer = TOWNSFOLK.find((t) => t.id === proposerId)?.name ?? proposerId;
+    broadcast({ type: 'govern', proposer, passed: !!round.result?.passed, forN, againstN });
+  }
 
   // 6c. native-$0G economy (Step 1) — reconcile each NPC's on-chain 0G balance to the in-process
   //     ledger and broadcast the result. Gated on a watcher (real $0G txs — don't churn unwatched)
@@ -613,6 +623,7 @@ export async function startServer(opts: { port?: number; settler?: Native0gSettl
           try {
             const round = await runSanctionVote(cognition, polity, npc.id, visitorId, topic, guildIds, { until: Infinity });
             if (round) {
+              governFeed(round, npc.id);
               rec.tick(++replayT);
               rec.event('town.propose', { actor: npc.id, target: visitorId, by: 'npc', data: { proposer: npc.id, target: visitorId, topic, pid: round.pid } });
               for (const [voter, choice] of Object.entries(round.votes)) {
@@ -671,6 +682,7 @@ export async function startServer(opts: { port?: number; settler?: Native0gSettl
               rec.event('town.rap', { actor: visitorId, by: 'engine', data: { offender: visitorId, kind: 'sabotage', victim: npc.id } });
               const round = await runRapSanction(rapSheet, polity, npc.id, visitorId, guildIds, { until: Infinity });
               if (round) {
+                governFeed(round, npc.id);
                 rec.event('town.propose', { actor: npc.id, target: visitorId, by: 'npc', data: { proposer: npc.id, target: visitorId, topic: misconductTopic(visitorId), pid: round.pid } });
                 for (const [voter, choice] of Object.entries(round.votes)) {
                   if (voter === npc.id) continue;
