@@ -64,7 +64,20 @@ async function reconcileAll(reason: string) {
 - Config already present: `ECON_ONCHAIN`, `NPC_MNEMONIC`, `ZEROG_WALLET_PK` (treasury),
   `ZEROG_NET`, `ECON_WEI_PER_UNIT`.
 
-## Step 2 — Luck / black-swan events  ·  effort M
+## Step 2 — Luck / black-swan events  ·  effort M · **IMPLEMENTED (bills & windfalls)**
+
+> Shipped as a seeded **zero-sum** churn (`ECON_BILLS=1`): each round bills ~half the NPCs a
+> 1–3 $0G "sudden bill" into an escrow, then pays the whole escrow to one lucky NPC — so the
+> town's total $0G is conserved (the escrow is the settler's treasury on-chain; the two reconcile
+> txs net to zero there). The **debit seam decision was resolved by adding `SharedWorld.debit`
+> to the engine** (`aigg-agent-kit`, commit `de27385`; kit pin bumped in the Dockerfile +
+> submodule). Verified hermetically: 4 NPCs billed −5.32 → one winner +5.32; town total conserved
+> 50→50 across 12 rounds; `econ.bill`/`econ.dividend` recorded and the replay validates with
+> `econ@0`. Client renders the bills + the winner's windfall.
+
+The design below is the original (more general) luck sketch; the shipped version is the
+bills-&-windfalls specialization of it.
+
 
 Seeded exogenous $0G swings, reproducible from `(seed, config)`:
 
@@ -100,7 +113,11 @@ options for losses:
 
 Recommend Option 1 if an engine PR is acceptable; else Option 2. Gains need neither.
 
-## Step 3 — Economy replay stream  ·  effort S
+## Step 3 — Economy replay stream  ·  effort S · **IMPLEMENTED**
+
+> Shipped: the recorder now declares `['town@0', 'econ@0']`, so economy events validate and render.
+> Bills use `econ.bill` + `econ.dividend`; social/settlement stay on `town.*`.
+
 
 Add the econ pack so economy events validate:
 

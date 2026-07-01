@@ -20,7 +20,7 @@ import { readFileSync as fsRead } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { SharedWorld, FairTick, type FairActor } from '@aigg/gamekit';
+import { SharedWorld, FairTick, mulberry32, type FairActor } from '@aigg/gamekit';
 import { createRecorder, viewerDir } from '@aigg/replay';
 import { InMemoryStore, Metabolism, AiggMemoryClient } from '@aigg/npc-agent';
 import type { InferenceProvider } from '@aigg/npc-agent';
@@ -180,7 +180,7 @@ export async function startServer(opts: { port?: number; settler?: Native0gSettl
   // replay recorder — emits a replay@1 town@0 stream alongside the live WS feed.
   const runId = `0gtown-${Date.now()}`;
   const replayEntities = TOWNSFOLK.map((t) => ({ id: t.id, name: t.name, kind: 'npc' as const }));
-  const rec = createRecorder({ path: `runs/${runId}.jsonl`, packs: ['town@0'] });
+  const rec = createRecorder({ path: `runs/${runId}.jsonl`, packs: ['town@0', 'econ@0'] });
   let replayT = 0; // 0gtown has no sim clock: one interaction = one tick
   rec.run({
     runId,
@@ -344,6 +344,40 @@ export async function startServer(opts: { port?: number; settler?: Native0gSettl
   function scheduleReconcile(reason: string): void {
     if (!settler || reconcileTimer) return;
     reconcileTimer = setTimeout(() => { reconcileTimer = undefined; void reconcileAll(reason); }, Number(process.env.ECON_RECONCILE_MS || 12000));
+  }
+
+  // 6d. bills & windfalls — a seeded, ZERO-SUM churn: bill a few NPCs into an escrow, then pay
+  //     the whole escrow to one lucky NPC. Conserves the town's total $0G (escrow = the settler's
+  //     treasury on-chain — the two reconcile txs net to zero there). Deterministic from the seed.
+  const billRng = mulberry32(Number(process.env.ECON_BILLS_SEED || 70701));
+  let billsTimer: ReturnType<typeof setInterval> | undefined;
+  async function billsAndWindfalls(): Promise<void> {
+    if (clients.size === 0) return; // don't churn the town unwatched
+    const bills: Array<{ id: string; npc: string; amt: number }> = [];
+    let escrow = 0;
+    for (const t of TOWNSFOLK) {
+      if (billRng() >= 0.5) continue;                       // ~half the town each round
+      const bal = await world.balanceGcc(t.id);
+      if (bal <= 0.5) continue;                             // leave the near-broke alone
+      const amt = round0G(Math.min(bal - 0.5, 1 + billRng() * 2)); // 1–3 $0G, never down to zero
+      if (amt <= 0) continue;
+      await world.debit(t.id, amt);                         // the missing subtract (engine primitive)
+      escrow = round0G(escrow + amt);
+      bills.push({ id: t.id, npc: t.name, amt });
+    }
+    if (escrow <= 0) return;
+    const winner = TOWNSFOLK[Math.floor(billRng() * TOWNSFOLK.length)];
+    await world.donate('system:fortune', winner.id, escrow);  // pay the escrow out — town total unchanged
+    try {
+      rec.tick(++replayT);
+      for (const b of bills) rec.event('econ.bill', { actor: b.id, by: 'engine', data: { amount: b.amt, to: 'escrow' } });
+      rec.event('econ.dividend', { actor: winner.id, by: 'engine', data: { amount: escrow, from: 'escrow' } });
+      rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
+      rec.flush();
+    } catch (e: any) { console.warn('[0gtown] bills replay skipped:', e?.message); }
+    broadcast({ type: 'fortune', bills, winner: { id: winner.id, npc: winner.name, amount: escrow } });
+    broadcast(await roomSnapshot());
+    scheduleReconcile('bills'); // settle the net-zero churn to 0G Chain
   }
   const fairActors: FairActor[] = [
     { npcId: 'npc:0gtown:mei', role: 'pitcher', claims: ['double your money in a day', 'a sure-thing rice-futures tip'], amountGcc: 2, room: ROOM },
@@ -682,7 +716,12 @@ export async function startServer(opts: { port?: number; settler?: Native0gSettl
     fairTimer = setInterval(() => void runFair(), ms);
     console.log(`[0gtown] living town: FairTick every ${ms}ms (while watched)`);
   }
-  return { server, world, close: () => { if (fairTimer) clearInterval(fairTimer); if (reconcileTimer) clearTimeout(reconcileTimer); wss.close(); server.close(); reflectShim?.close(); } };
+  if (process.env.ECON_BILLS === '1') {
+    const ms = Number(process.env.ECON_BILLS_MS || 15000);
+    billsTimer = setInterval(() => void billsAndWindfalls(), ms);
+    console.log(`[0gtown] bills & windfalls: every ${ms}ms (while watched)`);
+  }
+  return { server, world, close: () => { if (fairTimer) clearInterval(fairTimer); if (billsTimer) clearInterval(billsTimer); if (reconcileTimer) clearTimeout(reconcileTimer); wss.close(); server.close(); reflectShim?.close(); } };
 }
 
 if (process.argv[1]?.endsWith('server.ts')) {

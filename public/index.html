@@ -251,6 +251,7 @@ function dispatch(m){
     case 'extorted': onExtorted(m); break;
     case 'settled': onSettled(m); break;
     case 'street': onStreet(m); break;
+    case 'fortune': onFortune(m); break;
     case 'error': toast(m.text); unbusy(); break;
   }
 }
@@ -312,6 +313,7 @@ function render(e){
     return `<div class="beat"><div class="line">🌑 ${esc(e.reason||'You slip away — this time.')}</div></div>`;
   }
   if(e.k==='street') return `<div class="beat"><div class="line" style="opacity:.7;font-size:12.5px;font-style:italic">${esc(e.t)}</div></div>`;
+  if(e.k==='fortune') return `<div class="beat learn"><div class="line">🎉 ${esc(e.npc)} caught a windfall — <b>+${e.amt} $0G</b> from the escrow.</div></div>`;
   if(e.k==='settle-note') return `<div class="beat"><div class="line">⛓ ${esc(e.text)}</div></div>`;
   if(e.k==='settle'){
     const link=e.tx
@@ -351,6 +353,10 @@ function onStreet(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(
     else if(p.accepted) pushLog(id,{k:'street',t:`🎭 ${nameOf(p.from)} worked the “${p.claim}” angle on ${nameOf(p.to)} — ${nameOf(p.to)} lost ${Math.abs(p.deltaGcc)} $0G.`});
   }
   for(const g of (m.gossips||[])) pushLog(id,{k:'street',t:`🗣 ${nameOf(g.from)} tipped off ${nameOf(g.to)} about a swindle going round.`});
+}
+function onFortune(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
+  for(const b of (m.bills||[])) pushLog(id,{k:'street',t:`💸 ${b.npc} got hit by a sudden bill — −${b.amt} $0G into the escrow.`});
+  if(m.winner) pushLog(id,{k:'fortune',npc:m.winner.npc,amt:m.winner.amount});
 }
 function onSettled(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
   if(m.disabled){ pushLog(id,{k:'settle-note',text:'on-chain settlement not configured (set ECON_ONCHAIN=1)'}); return; }
