@@ -269,6 +269,7 @@ function dispatch(m){
     case 'settled': onSettled(m); break;
     case 'street': onStreet(m); break;
     case 'fortune': onFortune(m); break;
+    case 'govern': onGovern(m); break;
     case 'error': toast(m.text); unbusy(); break;
   }
 }
@@ -379,6 +380,10 @@ function onStreet(m){
 function onFortune(m){
   for(const b of (m.bills||[])) pushFeed(`💸 ${b.npc} got a sudden bill — −${b.amt} $0G into escrow.`,'loss');
   if(m.winner) pushFeed(`🎉 ${m.winner.npc} caught a windfall — +${m.winner.amount} $0G from the escrow.`,'win');
+}
+function onGovern(m){ const tally=`${m.forN}:${m.againstN}`;
+  if(m.passed) pushFeed(`⚖ The night-market guild voted ${tally} — ${m.proposer}’s motion to bar the visitor PASSED.`,'loss');
+  else pushFeed(`⚖ The guild voted ${tally} — the motion to bar the visitor failed.`);
 }
 function onSettled(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
   if(m.disabled){ pushLog(id,{k:'settle-note',text:'on-chain settlement not configured (set ECON_ONCHAIN=1)'}); return; }
