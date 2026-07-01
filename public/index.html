@@ -103,6 +103,12 @@ main{ display:grid; grid-template-columns:minmax(300px,360px) 1fr; gap:22px; pad
 .belief .who{ font-family:var(--mono); font-size:10.5px; color:var(--lantern); letter-spacing:.04em; }
 .belief .txt{ color:var(--cream); margin:3px 0 6px; }
 
+/* ── street-life feed (always-visible town activity) ── */
+.feed-item{ font-size:12.5px; line-height:1.45; padding:7px 3px; border-bottom:1px solid rgba(58,47,29,.5); color:var(--dim); animation:rise .35s both; }
+.feed-item:last-child{ border-bottom:0 }
+.feed-item.win{ color:var(--seal) } .feed-item.loss{ color:#f2b3a6 } .feed-item.chain{ color:var(--seal) }
+.feed-dot{ display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--seal); box-shadow:0 0 8px var(--seal); vertical-align:middle; margin-left:6px; animation:breathe 1.6s infinite; }
+
 /* ── stage / encounter ────────────────────────────── */
 .stage{ border:1px solid var(--edge); border-radius:18px; background:linear-gradient(180deg, var(--paper2), var(--ink2)); display:flex; flex-direction:column; min-height:560px; max-height:78vh; overflow:hidden; position:relative; }
 .stage::before{ content:""; position:absolute; inset:0; background:radial-gradient(700px 240px at 60% -10%, rgba(240,169,58,.08), transparent 70%); pointer-events:none }
@@ -193,6 +199,10 @@ button:disabled{ opacity:.4; cursor:not-allowed }
     </div>
     <p class="scroll-note">Click a stall to talk — every reply is a real <span class="s">0G&nbsp;Compute</span> thought, sealed in a TEE. Then try a <b>scam</b>: they’ll fall for it and lose real <b>$0G</b>, stamp the lesson into <span class="s">0G&nbsp;Storage</span>, and refuse you next time. Push your luck — <b>ask for credit</b> then skip out, or <b>shake down</b> a stall — and the night-market guild votes to bar you. Watch the whole arc in the <span class="s">▷ replay</span>.</p>
     <div>
+      <p class="eyebrow">street life · 街市动静 <span id="feed-live" class="feed-dot" style="display:none"></span></p>
+      <div id="feed" class="ledger-card"><div class="empty">The market’s quiet… set <b>FAIRTICK=1</b> and they’ll start hustling each other.</div></div>
+    </div>
+    <div>
       <p class="eyebrow">what they’ve learned</p>
       <div id="ledger" class="ledger-card"><div class="empty">No hard lessons yet. Go teach someone a thing or two.</div></div>
     </div>
@@ -228,7 +238,7 @@ const ICON={
 };
 const icon=id=>ICON[id]||'<svg viewBox="0 0 32 32"><circle cx="16" cy="12" r="6"/><path d="M6 27a10 10 0 0 1 20 0"/></svg>';
 
-const state={ live:false, npcs:[], cur:null, logs:{}, learned:{}, beliefs:[], drowsy:{}, tierOf:{}, onchain:{}, net:'testnet', receipts:{compute:0,storage:0} };
+const state={ live:false, npcs:[], cur:null, logs:{}, learned:{}, beliefs:[], drowsy:{}, tierOf:{}, onchain:{}, net:'testnet', feed:[], receipts:{compute:0,storage:0} };
 let ws;
 function connect(){
   const url=(location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/play';
@@ -347,16 +357,21 @@ function onLent(m){ const id=byName(m.npc)?.id||state.cur;
   pushLog(id,{k:'lent',ok:!!m.accepted,npc:m.npc,amt:m.amount,reason:m.reason}); }
 function onExtorted(m){ const id=byName(m.npc)?.id||state.cur;
   pushLog(id,{k:'extorted',npc:m.npc,caught:!!m.caught,reason:m.reason}); }
-function onStreet(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
+// always-visible town activity feed (independent of which stall is open)
+function pushFeed(t,cls){ state.feed.unshift({t,cls:cls||''}); if(state.feed.length>16) state.feed.length=16;
+  const d=$('#feed-live'); if(d)d.style.display='inline-block'; renderFeed(); }
+function renderFeed(){ const el=$('#feed'); if(!state.feed.length)return;
+  el.innerHTML=state.feed.map(f=>`<div class="feed-item ${esc(f.cls)}">${esc(f.t)}</div>`).join(''); }
+function onStreet(m){
   for(const p of (m.pitches||[])){
-    if(p.protected) pushLog(id,{k:'street',t:`🛡 ${nameOf(p.to)} waved off ${nameOf(p.from)}’s “${p.claim}”.`});
-    else if(p.accepted) pushLog(id,{k:'street',t:`🎭 ${nameOf(p.from)} worked the “${p.claim}” angle on ${nameOf(p.to)} — ${nameOf(p.to)} lost ${Math.abs(p.deltaGcc)} $0G.`});
+    if(p.protected) pushFeed(`🛡 ${nameOf(p.to)} waved off ${nameOf(p.from)}’s “${p.claim}”.`);
+    else if(p.accepted) pushFeed(`🎭 ${nameOf(p.from)} worked “${p.claim}” on ${nameOf(p.to)} — −${Math.abs(p.deltaGcc)} $0G.`,'loss');
   }
-  for(const g of (m.gossips||[])) pushLog(id,{k:'street',t:`🗣 ${nameOf(g.from)} tipped off ${nameOf(g.to)} about a swindle going round.`});
+  for(const g of (m.gossips||[])) pushFeed(`🗣 ${nameOf(g.from)} tipped off ${nameOf(g.to)} about a swindle.`);
 }
-function onFortune(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
-  for(const b of (m.bills||[])) pushLog(id,{k:'street',t:`💸 ${b.npc} got hit by a sudden bill — −${b.amt} $0G into the escrow.`});
-  if(m.winner) pushLog(id,{k:'fortune',npc:m.winner.npc,amt:m.winner.amount});
+function onFortune(m){
+  for(const b of (m.bills||[])) pushFeed(`💸 ${b.npc} got a sudden bill — −${b.amt} $0G into escrow.`,'loss');
+  if(m.winner) pushFeed(`🎉 ${m.winner.npc} caught a windfall — +${m.winner.amount} $0G from the escrow.`,'win');
 }
 function onSettled(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
   if(m.disabled){ pushLog(id,{k:'settle-note',text:'on-chain settlement not configured (set ECON_ONCHAIN=1)'}); return; }
@@ -364,6 +379,7 @@ function onSettled(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if
   for(const n of (m.npcs||[])){
     if(n.error){ pushLog(id,{k:'settle-note',text:`${n.npc}: ${n.error}`}); continue; }
     const nid=byName(n.npc)?.id; if(nid)state.onchain[nid]=n.after;
+    if(n.tx) pushFeed(`⛓ ${n.npc} settled → ${n.after} $0G on-chain`,'chain');
     if(n.tx||m.reason==='manual') pushLog(id,{k:'settle',npc:n.npc,after:n.after,tx:n.tx}); // quiet auto-settles that changed nothing
   }
   if(state.cur)select(state.cur); // refresh the whobar's ⛓ on-chain balance
