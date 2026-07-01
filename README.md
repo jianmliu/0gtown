@@ -62,6 +62,8 @@ Smoke checks: `pnpm spike` (server-side learn loop), `tsx src/live-check.ts` (fu
 | `ZEROGTOWN_STORAGE` | `1` to anchor beliefs to 0G Storage. |
 | `ZEROG_SKIP_DEPOSIT` | `1` to reuse an already-funded ledger (no deposit on boot). |
 | `ZEROG_DEPOSIT` | $0G deposited into the compute ledger on boot (default `0.05`). |
+| `MEMORY_URL` | Point at a running [`aigg-memory`](https://github.com/jianmliu/aigg-memory) sidecar (`serve /memory/*`) to swap the in-process `FakeKernel` for the **real** episodic→semantic kernel (discernment, reflection, track-record). Unset → deterministic `FakeKernel`. |
+| `MEMORY_TOKEN` | Bearer token for the `aigg-memory` sidecar, if it requires auth. |
 | `PORT` | http + ws port (default `8137`; a PaaS provides `$PORT`). |
 
 ## How it works
