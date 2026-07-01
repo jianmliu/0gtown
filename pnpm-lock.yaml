@@ -17,6 +17,9 @@ importers:
       '@aigg/cognition':
         specifier: workspace:*
         version: link:kit/packages/cognition
+      '@aigg/data-onchain':
+        specifier: workspace:*
+        version: link:kit/packages/data-onchain
       '@aigg/gamekit':
         specifier: workspace:*
         version: link:kit/packages/gamekit
@@ -53,6 +56,25 @@ importers:
         version: 5.9.3
 
   kit/packages/cognition:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.8.4
+        version: 22.20.0
+      tsx:
+        specifier: ^4.21.0
+        version: 4.22.4
+
+  kit/packages/data-onchain:
+    dependencies:
+      '@0gfoundation/0g-storage-ts-sdk':
+        specifier: ^1.2.10
+        version: 1.2.10(bufferutil@4.1.0)(ethers@6.17.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(utf-8-validate@5.0.10)
+      '@aigg/npc-agent':
+        specifier: workspace:*
+        version: link:../npc-agent
+      ethers:
+        specifier: ^6.16.0
+        version: 6.17.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
     devDependencies:
       '@types/node':
         specifier: ^22.8.4

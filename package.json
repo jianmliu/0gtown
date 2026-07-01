@@ -20,6 +20,7 @@
     "@aigg/npc-agent": "workspace:*",
     "@aigg/onchain": "workspace:*",
     "@aigg/replay": "workspace:*",
+    "@aigg/data-onchain": "workspace:*",
     "@0gfoundation/0g-compute-ts-sdk": "0.8.3",
     "@0gfoundation/0g-storage-ts-sdk": "^1.2.10",
     "ethers": "^6.16.0",
