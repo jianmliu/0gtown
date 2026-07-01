@@ -42,8 +42,34 @@ aigg-memory serve --root ./game-memory --port 8788   # binds 127.0.0.1 by defaul
 Endpoints used: `POST /memory/remember`, `/memory/discernment`, `/memory/select`,
 `/memory/reflect`, `/memory/verify` (see the memory repo README §"Quickstart — HTTP API").
 The corpus lives on disk under `--root` and is **git-backed**, so beliefs already survive
-restart (a free lead-in to Phase 4). Reflection needs an OpenAI-compatible chat backend
-(e.g. a local Ollama at `http://localhost:11434/v1`) that the memory service calls.
+restart (a free lead-in to Phase 4).
+
+## Step 1b — Belief synthesis runs on 0G (NOT Ollama)
+
+Reflection needs an OpenAI-compatible chat backend. Keep everything on 0G — the whole
+project's thesis is "think on 0G Compute" — so point the reflect backend at the **0G
+Compute Router** (an OpenAI-compatible gateway: one URL, one key, on-chain billing),
+exported by the engine as `ZEROG_ROUTER_TESTNET`/`ZEROG_ROUTER_MAINNET`:
+
+- testnet: `https://router-api-testnet.integratenetwork.work/v1` (public — no key)
+- mainnet: `https://router-api.0g.ai/v1` (needs a router API key)
+
+The memory sidecar's `http` backend supports a bearer key (`extract.py`), but the reflect
+*request* carries no key field — so supply the mainnet router key to the **sidecar** at
+launch (`aigg-memory serve --aigg-key "$ZEROG_ROUTER_KEY" …` / its env), not from 0gtown.
+
+**Two backend choices:**
+
+| | Reflect backend | 0G? | TEE-verified? | Effort |
+|---|---|---|---|---|
+| **A (simple)** | 0G Compute **Router** (`/v1`, OpenAI-compatible) | ✅ | ✗ (router billing, not the broker attestation path) | S |
+| **B (purist)** | a tiny local **broker shim** wrapping `ZeroGBrokerProvider` that exposes `/v1/chat/completions`, minting fresh broker headers per call + running `processResponse` | ✅ | ✅ same TEE path as `talk` | M |
+
+Option A gets belief-synthesis onto 0G immediately. Option B (a ~50-line
+`src/zerog-openai-shim.ts`) makes reflection carry the **same TEE attestation** as NPC
+replies, so *both* thinking and learning are enclave-verified — the fully honest version
+of the 0gtown claim. Recommend shipping A first, then B when a TEE badge on consolidation
+is wanted.
 
 ## Step 2 — Construct the kernel with a reflect backend  ·  `src/server.ts`
 
@@ -55,9 +81,9 @@ const memKernel = process.env.MEMORY_URL
       // NEW: enables reflect()/dream. Unset → retrieval-only (today's behaviour).
       ...(process.env.MEMORY_REFLECT_URL ? {
         reflect: {
-          aiggUrl: process.env.MEMORY_REFLECT_URL,               // e.g. http://localhost:11434/v1
-          model: process.env.MEMORY_REFLECT_MODEL,               // e.g. llama3.2
-          backend: process.env.MEMORY_REFLECT_BACKEND ?? 'http', // http | claude-cli | …
+          aiggUrl: process.env.MEMORY_REFLECT_URL,               // 0G Compute Router /v1 (or the Option-B shim)
+          model: process.env.MEMORY_REFLECT_MODEL,               // a 0G-served model, e.g. the same GLM-5 used for talk
+          backend: process.env.MEMORY_REFLECT_BACKEND ?? 'http', // http (Router/shim) | claude-cli
         },
       } : {}),
     })
@@ -117,9 +143,12 @@ Add to `.env.example` / README (the `MEMORY_URL`/`MEMORY_TOKEN` rows already lan
 Phase 0):
 
 ```
-# MEMORY_REFLECT_URL=http://localhost:11434/v1   # OpenAI-compatible chat backend for belief synthesis
-# MEMORY_REFLECT_MODEL=llama3.2
-# MEMORY_REFLECT_BACKEND=http                     # http | claude-cli
+# Belief synthesis on 0G Compute (NOT Ollama). Point at the 0G Router (Option A)
+# or the local broker shim (Option B, TEE-verified). Testnet router is public.
+# MEMORY_REFLECT_URL=https://router-api-testnet.integratenetwork.work/v1
+# MEMORY_REFLECT_MODEL=zai-org/GLM-5-FP8          # a 0G-served model (match the talk brain)
+# MEMORY_REFLECT_BACKEND=http                     # http (Router/shim) | claude-cli
+# mainnet router needs a key — give it to the sidecar: aigg-memory serve --aigg-key "$ZEROG_ROUTER_KEY"
 ```
 
 ## What this unlocks (why it's worth it)
@@ -149,4 +178,5 @@ Phase 0):
   (every N interactions) instead of per-loss.
 - **Sidecar availability:** all calls are best-effort try/caught; a down sidecar degrades to
   today's behaviour, never breaks the town.
-- **Effort:** M (≈2–4 days incl. a local Ollama for the reflect backend and a spike arc).
+- **Effort:** M — Option A ≈1–2 days (Router env + dream + spike arc); Option B adds
+  ≈1–2 days for the TEE-verified `zerog-openai-shim.ts`.
