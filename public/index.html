@@ -138,6 +138,8 @@ main{ display:grid; grid-template-columns:minmax(300px,360px) 1fr; gap:22px; pad
 .beat.learn .line em{ color:var(--cream); font-style:italic }
 .stamp{ display:inline-flex; align-items:center; gap:7px; margin-top:9px; font-family:var(--mono); font-size:10.5px; color:var(--seal); cursor:pointer; border:1px solid var(--seal-line); border-radius:8px; padding:6px 11px; background:var(--seal-soft); transition:.15s; animation:stampin .5s cubic-bezier(.2,1.4,.4,1) both }
 .stamp:hover{ background:rgba(55,216,191,.2) }
+.stamp .verify-cta{ color:var(--seal-2); text-decoration:underline; text-underline-offset:2px; }
+.stamp:hover .verify-cta{ color:var(--cream) }
 @keyframes stampin{0%{transform:scale(1.5) rotate(-8deg);opacity:0}60%{transform:scale(.96)}100%{transform:scale(1);opacity:1}}
 
 .composer{ display:flex; gap:10px; padding:15px; border-top:1px solid var(--edge); position:relative; z-index:1; }
@@ -250,6 +252,7 @@ function dispatch(m){
     case 'lent': onLent(m); break;
     case 'extorted': onExtorted(m); break;
     case 'settled': onSettled(m); break;
+    case 'verified': onVerified(m); break;
     case 'street': onStreet(m); break;
     case 'fortune': onFortune(m); break;
     case 'error': toast(m.text); unbusy(); break;
@@ -315,6 +318,8 @@ function render(e){
   if(e.k==='street') return `<div class="beat"><div class="line" style="opacity:.7;font-size:12.5px;font-style:italic">${esc(e.t)}</div></div>`;
   if(e.k==='fortune') return `<div class="beat learn"><div class="line">🎉 ${esc(e.npc)} caught a windfall — <b>+${e.amt} $0G</b> from the escrow.</div></div>`;
   if(e.k==='settle-note') return `<div class="beat"><div class="line">⛓ ${esc(e.text)}</div></div>`;
+  if(e.k==='verify-note') return `<div class="beat"><div class="line">⛓ ${esc(e.text)}</div></div>`;
+  if(e.k==='verify') return `<div class="beat ${e.ok?'learn':'loss'}"><div class="line">${e.ok?'✓ verified against 0G Storage':'✗ could not verify'}${e.err?' ('+esc(e.err)+')':''}</div>${e.ok&&e.data?'<div class="line">“'+esc(e.data)+'”</div>':''}</div>`;
   if(e.k==='settle'){
     const link=e.tx
       ? `<a class="chain-link" href="${esc(e.tx.url)}" target="_blank" rel="noopener">⛓ ${esc(String(e.tx.txHash).slice(0,10))}…</a>`
@@ -324,8 +329,9 @@ function render(e){
   return '';
 }
 function stamp(root,label){ if(!root)return ''; const s=root.slice(0,10)+'…'+root.slice(-6);
-  return `<div class="stamp" onclick="copyRoot('${esc(root)}')" title="${esc(root)}">✦ ${label||'stamped into 0G Storage'} · ${s}</div>`; }
+  return `<div class="stamp" onclick="verifyRoot('${esc(root)}')" title="click to pull &amp; verify from 0G Storage — ${esc(root)}">✦ ${label||'stamped into 0G Storage'} · ${s} · <span class="verify-cta">verify ⛓</span></div>`; }
 window.copyRoot=r=>{ navigator.clipboard?.writeText(r); toast('rootHash copied'); };
+window.verifyRoot=r=>{ if(!r)return; send({cmd:'verify',rootHash:r}); toast('pulling belief from 0G Storage…'); };
 
 function onTalked(m){ unbusy();
   const tid=byName(m.npc)?.id; if(tid){ state.drowsy[tid]=!!m.starving; if(m.tier)state.tierOf[tid]=m.tier; }
@@ -367,6 +373,10 @@ function onSettled(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if
     if(n.tx||m.reason==='manual') pushLog(id,{k:'settle',npc:n.npc,after:n.after,tx:n.tx}); // quiet auto-settles that changed nothing
   }
   if(state.cur)select(state.cur); // refresh the whobar's ⛓ on-chain balance
+}
+function onVerified(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
+  if(m.disabled){ pushLog(id,{k:'verify-note',text:'0G Storage verify not configured'}); return; }
+  pushLog(id,{k:'verify',ok:m.verified,data:m.data||'',err:m.error||''});
 }
 function renderLedger(){ const el=$('#ledger');
   if(!state.beliefs.length){ el.innerHTML='<div class="empty">No hard lessons yet. Go teach someone a thing or two.</div>'; return; }
