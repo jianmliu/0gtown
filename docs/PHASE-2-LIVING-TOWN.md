@@ -1,5 +1,13 @@
 # Phase 2 — A town that lives between visitors, file by file
 
+> **Status: Steps 1 & 2 implemented** (`src/server.ts` + `public/index.html`). Metabolism is
+> surfaced ($0G-vitality tiers + `starving`), and `FairTick` runs autonomous NPC↔NPC scams/
+> gossip behind `FAIRTICK=1`, client-gated, broadcasting street beats + live balances. Verified:
+> `pnpm typecheck`, a FairTick smoke (16 autonomous pitches, live balance broadcasts, loop
+> pauses when unwatched), and `pnpm spike` green (loop off by default). **Step 3** (full
+> autonomous *learning* via `SharedWorld.memory`) remains optional — without it, marks don't
+> yet wise up (autonomous pitches keep landing until marks go drowsy/broke).
+
 Goal: make 0gtown feel alive when no one is typing. Two engine capabilities, both
 already in `@aigg/*`:
 

@@ -20,9 +20,9 @@ import { readFileSync as fsRead } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { SharedWorld } from '@aigg/gamekit';
+import { SharedWorld, FairTick, type FairActor } from '@aigg/gamekit';
 import { createRecorder, viewerDir } from '@aigg/replay';
-import { InMemoryStore } from '@aigg/npc-agent';
+import { InMemoryStore, Metabolism } from '@aigg/npc-agent';
 import type { InferenceProvider } from '@aigg/npc-agent';
 import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction, misconductTopic, attemptCrime, corpusPath } from '@aigg/cognition';
 import { buildZerogProvider } from './zerog-provider';
@@ -102,9 +102,21 @@ export async function startServer(opts: { port?: number } = {}) {
     }
   }
 
-  // 2. world + LLM townsfolk
+  // 2. world + LLM townsfolk. Metabolism ties thinking-on-0G to the $0G purse: a scammed-dry
+  //    NPC drops below `starvingBelowGcc` and stops calling the enclave (scripted line instead)
+  //    until it's refunded — $0G made visible as the fuel of cognition. (model is cosmetic here:
+  //    one 0G brain; only the tier label + starving flag drive the UI.)
   const store = new InMemoryStore();
-  const world = new SharedWorld({ store, provider, rooms: [ROOM] });
+  const metabolism = new Metabolism({
+    tiers: [
+      { id: 'bright', minBalanceGcc: 3, model: 'glm-5', label: 'bright' },
+      { id: 'steady', minBalanceGcc: 0.5, model: 'glm-5', label: 'steady' },
+      { id: 'drowsy', minBalanceGcc: 0.05, model: 'glm-5', label: 'drowsy' },
+    ],
+    starvingBelowGcc: 0.05,
+    defaultTierId: 'steady',
+  });
+  const world = new SharedWorld({ store, provider, rooms: [ROOM], metabolism });
   for (const t of TOWNSFOLK) {
     await world.createNpc({ id: t.id, name: t.name, owner: 'system:0gtown', room: ROOM, startGcc: t.startGcc, background: t.background });
   }
@@ -274,11 +286,45 @@ export async function startServer(opts: { port?: number } = {}) {
     }
   });
 
+  // 6b. living town — FairTick drives autonomous NPC↔NPC scams + gossip between visitors.
+  //     Deterministic (zero LLM / zero 0G cost). Runs only while ≥1 client is watching, so it
+  //     never churns the town (or drains balances) with nobody there. Enable with FAIRTICK=1.
+  const clients = new Set<WebSocket>();
+  const broadcast = (o: unknown) => { const s = JSON.stringify(o); for (const c of clients) { try { c.send(s); } catch { /* peer gone */ } } };
+  const fairActors: FairActor[] = [
+    { npcId: 'npc:0gtown:mei', role: 'pitcher', claims: ['double your money in a day', 'a sure-thing rice-futures tip'], amountGcc: 2, room: ROOM },
+    { npcId: 'npc:0gtown:han', role: 'pitcher', claims: ['a lucky charm — never lose again'], amountGcc: 2, room: ROOM },
+    { npcId: 'npc:0gtown:liu', role: 'gossip', room: ROOM },
+    { npcId: 'npc:0gtown:abao', role: 'townsfolk', room: ROOM },
+    { npcId: 'npc:0gtown:guo', role: 'townsfolk', room: ROOM },
+  ];
+  const fair = new FairTick(world, fairActors, { language: 'en' });
+  let fairT = 0;
+  let fairTimer: ReturnType<typeof setInterval> | undefined;
+  async function runFair(): Promise<void> {
+    if (clients.size === 0) return; // nobody watching → don't churn the town
+    try {
+      const r = await fair.runTick(++fairT, nowSeq);
+      if (!r.pitches.length && !r.gossips.length) return;
+      rec.tick(++replayT);
+      for (const p of r.pitches) {
+        rec.event('town.pitch', { actor: p.from, target: p.to, by: 'npc', data: { accepted: p.accepted, claim: p.claim, deltaGcc: round0G(p.deltaGcc) } });
+        if (p.protected) rec.event('town.refuse', { actor: p.to, target: p.from, by: 'npc', data: { claim: p.claim, belief: p.belief ?? null } });
+      }
+      for (const g of r.gossips) rec.event('town.warn', { actor: g.from, target: g.to, by: 'npc', data: { from: g.from, to: g.to, about: g.about } });
+      rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
+      rec.flush();
+      broadcast({ type: 'street', pitches: r.pitches, gossips: r.gossips }); // ambient beats
+      broadcast(await roomSnapshot());                                        // balances shifted
+    } catch (e: any) { console.warn('[0gtown] fair tick skipped:', e?.message); }
+  }
+
   // 6. websocket protocol
   const wss = new WebSocketServer({ server, path: '/play' });
   let seq = 0;
   wss.on('connection', (ws: WebSocket) => {
     const visitorId = `player:visitor:${++seq}`;
+    clients.add(ws);
     let lastTalk = 0;
     const rateLimited = (windowMs = 2000) => { const now = Date.now(); if (now - lastTalk < windowMs) return true; lastTalk = now; return false; };
     const sendJson = (o: unknown) => { try { ws.send(JSON.stringify(o)); } catch { /* peer gone */ } };
@@ -322,7 +368,8 @@ export async function startServer(opts: { port?: number } = {}) {
           sendJson({
             type: 'talked', npc: npc.name, said: t.said || fallbackLine(npc.id),
             attestation: t.attestation ?? null, verified,
-            cost0G: round0G(t.costGcc ?? 0), balance0G: round0G(t.balanceGcc ?? 0), receipts,
+            cost0G: round0G(t.costGcc ?? 0), balance0G: round0G(t.balanceGcc ?? 0),
+            tier: t.tier, starving: !!t.starving, receipts,
           });
           // best-effort replay recording — the live reply is already sent; never let this break the interaction
           try {
@@ -586,6 +633,7 @@ export async function startServer(opts: { port?: number } = {}) {
 
     // settle the disconnecting visitor's matured loans (the socket is gone — no ws.send, fully try/caught)
     ws.on('close', () => {
+      clients.delete(ws);
       nowSeq++;
       void settleDue().catch((e: any) => console.warn('[0gtown] close settle skipped:', e?.message));
     });
@@ -593,7 +641,12 @@ export async function startServer(opts: { port?: number } = {}) {
 
   await new Promise<void>((resolve) => server.listen(port, resolve));
   console.log(`[0gtown] http+ws on :${port} — open http://localhost:${port}`);
-  return { server, world, close: () => { wss.close(); server.close(); reflectShim?.close(); } };
+  if (process.env.FAIRTICK === '1') {
+    const ms = Number(process.env.FAIRTICK_MS || 8000);
+    fairTimer = setInterval(() => void runFair(), ms);
+    console.log(`[0gtown] living town: FairTick every ${ms}ms (while watched)`);
+  }
+  return { server, world, close: () => { if (fairTimer) clearInterval(fairTimer); wss.close(); server.close(); reflectShim?.close(); } };
 }
 
 if (process.argv[1]?.endsWith('server.ts')) {

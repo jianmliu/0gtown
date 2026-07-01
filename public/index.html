@@ -228,7 +228,7 @@ const ICON={
 };
 const icon=id=>ICON[id]||'<svg viewBox="0 0 32 32"><circle cx="16" cy="12" r="6"/><path d="M6 27a10 10 0 0 1 20 0"/></svg>';
 
-const state={ live:false, npcs:[], cur:null, logs:{}, learned:{}, beliefs:[], receipts:{compute:0,storage:0} };
+const state={ live:false, npcs:[], cur:null, logs:{}, learned:{}, beliefs:[], drowsy:{}, tierOf:{}, receipts:{compute:0,storage:0} };
 let ws;
 function connect(){
   const url=(location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/play';
@@ -250,6 +250,7 @@ function dispatch(m){
     case 'lent': onLent(m); break;
     case 'extorted': onExtorted(m); break;
     case 'settled': onSettled(m); break;
+    case 'street': onStreet(m); break;
     case 'error': toast(m.text); unbusy(); break;
   }
 }
@@ -257,6 +258,7 @@ function setStatus(live,o){ const el=$('#status'); el.className='status '+(live?
 function setReceipts(r){ state.receipts=r; $('#t-compute').textContent=r.compute; $('#t-storage').textContent=r.storage; }
 const byId=id=>state.npcs.find(n=>n.id===id);
 const byName=nm=>state.npcs.find(n=>n.name===nm);
+const nameOf=id=>byId(id)?.name||id;
 
 function renderStalls(){
   const w=$('#stalls'); w.innerHTML='';
@@ -265,7 +267,7 @@ function renderStalls(){
     d.className='stall'+(state.cur===n.id?' sel':''); d.style.animationDelay=(i*90)+'ms'; d.dataset.id=n.id;
     d.innerHTML=`<div class="emblem">${icon(n.id)}</div>
       <div><div class="nm">${esc(n.name)}</div><div class="role">${esc(role(n.id))}</div>
-      <div class="meta"><span class="coin">${n.balance0G} $0G</span>${state.learned[n.id]?'<span class="mood wary">wary now</span>':'<span class="mood">trusting</span>'}</div></div>
+      <div class="meta"><span class="coin">${n.balance0G} $0G</span>${state.learned[n.id]?'<span class="mood wary">wary now</span>':'<span class="mood">trusting</span>'}${state.drowsy[n.id]?'<span class="mood" title="too drained to think on 0G">💤 drowsy</span>':''}</div></div>
       <div class="think">thinking on 0G…</div>`;
     d.onclick=()=>select(n.id); w.appendChild(d);
   });
@@ -304,6 +306,7 @@ function render(e){
     if(e.caught) return `<div class="beat loss"><div class="line">⚖ ${esc(e.reason||'Caught — the night-market guild bars you.')}</div></div>`;
     return `<div class="beat"><div class="line">🌑 ${esc(e.reason||'You slip away — this time.')}</div></div>`;
   }
+  if(e.k==='street') return `<div class="beat"><div class="line" style="opacity:.7;font-size:12.5px;font-style:italic">${esc(e.t)}</div></div>`;
   if(e.k==='settle-note') return `<div class="beat"><div class="line">⛓ ${esc(e.text)}</div></div>`;
   if(e.k==='settle'){
     const link=e.tx
@@ -318,6 +321,7 @@ function stamp(root,label){ if(!root)return ''; const s=root.slice(0,10)+'…'+r
 window.copyRoot=r=>{ navigator.clipboard?.writeText(r); toast('rootHash copied'); };
 
 function onTalked(m){ unbusy();
+  const tid=byName(m.npc)?.id; if(tid){ state.drowsy[tid]=!!m.starving; if(m.tier)state.tierOf[tid]=m.tier; }
   const sig=m.attestation&&m.attestation.signature;
   const chat=sig?'· '+String(sig).split(':').pop().slice(0,8)+'…':'';
   pushLog(byName(m.npc)?.id||state.cur,{k:'npc',npc:m.npc,t:m.said||'…',verified:m.verified,model:(m.attestation&&m.attestation.model||'').split('/').pop(),chat});
@@ -336,6 +340,13 @@ function onLent(m){ const id=byName(m.npc)?.id||state.cur;
   pushLog(id,{k:'lent',ok:!!m.accepted,npc:m.npc,amt:m.amount,reason:m.reason}); }
 function onExtorted(m){ const id=byName(m.npc)?.id||state.cur;
   pushLog(id,{k:'extorted',npc:m.npc,caught:!!m.caught,reason:m.reason}); }
+function onStreet(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
+  for(const p of (m.pitches||[])){
+    if(p.protected) pushLog(id,{k:'street',t:`🛡 ${nameOf(p.to)} waved off ${nameOf(p.from)}’s “${p.claim}”.`});
+    else if(p.accepted) pushLog(id,{k:'street',t:`🎭 ${nameOf(p.from)} worked the “${p.claim}” angle on ${nameOf(p.to)} — ${nameOf(p.to)} lost ${Math.abs(p.deltaGcc)} $0G.`});
+  }
+  for(const g of (m.gossips||[])) pushLog(id,{k:'street',t:`🗣 ${nameOf(g.from)} tipped off ${nameOf(g.to)} about a swindle going round.`});
+}
 function onSettled(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); if(!id)return;
   if(m.disabled){ pushLog(id,{k:'settle-note',text:'on-chain settlement not configured (set ECON_ONCHAIN=1)'}); return; }
   for(const n of (m.npcs||[])){
