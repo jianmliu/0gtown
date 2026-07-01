@@ -64,6 +64,8 @@ Smoke checks: `pnpm spike` (server-side learn loop), `tsx src/live-check.ts` (fu
 | `ZEROG_DEPOSIT` | $0G deposited into the compute ledger on boot (default `0.05`). |
 | `MEMORY_URL` | Point at a running [`aigg-memory`](https://github.com/jianmliu/aigg-memory) sidecar (`serve /memory/*`) to swap the in-process `FakeKernel` for the **real** episodic→semantic kernel (discernment, reflection, track-record). Unset → deterministic `FakeKernel`. |
 | `MEMORY_TOKEN` | Bearer token for the `aigg-memory` sidecar, if it requires auth. |
+| `MEMORY_REFLECT_URL` | Reflect/dream backend for **belief synthesis on 0G Compute** (the 0G Router `/v1`, OpenAI-compatible — *not* Ollama). Set it and a scam generalizes: NPCs refuse a *reworded* pitch, not just the exact string. Unset → retrieval-only. See [`docs/PHASE-1-COGNITION.md`](docs/PHASE-1-COGNITION.md). |
+| `MEMORY_REFLECT_MODEL` / `MEMORY_REFLECT_BACKEND` | 0G-served model (e.g. `zai-org/GLM-5-FP8`) and backend (`http`) for the reflect call. |
 | `PORT` | http + ws port (default `8137`; a PaaS provides `$PORT`). |
 
 ## How it works

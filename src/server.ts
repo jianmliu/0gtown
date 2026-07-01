@@ -24,7 +24,7 @@ import { SharedWorld } from '@aigg/gamekit';
 import { createRecorder, viewerDir } from '@aigg/replay';
 import { InMemoryStore } from '@aigg/npc-agent';
 import type { InferenceProvider } from '@aigg/npc-agent';
-import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction, misconductTopic, attemptCrime } from '@aigg/cognition';
+import { Cognition, TrustLedger, AiggMemoryKernel, FakeKernel, shouldRefuse, Polity, runSanctionVote, RapSheet, LoanBook, recordMisconduct, runRapSanction, misconductTopic, attemptCrime, corpusPath } from '@aigg/cognition';
 import { buildZerogProvider } from './zerog-provider';
 import { buildSettler } from './native-settler';
 import { FallbackProvider } from './fallback-provider';
@@ -106,11 +106,20 @@ export async function startServer(opts: { port?: number } = {}) {
   // 4. social cognition — memory-backed learn-gate + per-peer trust + warning diffusion.
   //    Live aigg-memory sidecar if MEMORY_URL set, else an in-process FakeKernel (deterministic).
   //    One shared TrustLedger is held here so the server can read back trust values for replay.
+  // reflect backend runs belief synthesis on 0G Compute (Router /v1, or the broker shim) — never Ollama.
+  // Unset MEMORY_REFLECT_URL → retrieval-only (remember/select/discernment), exactly today's behaviour.
+  const reflectUrl = process.env.MEMORY_REFLECT_URL;
   const memKernel = process.env.MEMORY_URL
-    ? new AiggMemoryKernel({ baseUrl: process.env.MEMORY_URL, token: process.env.MEMORY_TOKEN })
+    ? new AiggMemoryKernel({
+        baseUrl: process.env.MEMORY_URL,
+        token: process.env.MEMORY_TOKEN,
+        ...(reflectUrl ? { reflect: { aiggUrl: reflectUrl, model: process.env.MEMORY_REFLECT_MODEL, backend: process.env.MEMORY_REFLECT_BACKEND ?? 'http' } } : {}),
+      })
     : new FakeKernel();
   const trust = new TrustLedger();
   const cognition = new Cognition(memKernel, trust);
+  const memReflect = !!(process.env.MEMORY_URL && reflectUrl);
+  console.log(`[0gtown] memory: ${process.env.MEMORY_URL ? 'aigg-memory kernel' : 'FakeKernel (in-process)'}${memReflect ? ' · 0G reflect ON' : ''}`);
   const guildIds = TOWNSFOLK.map((t) => t.id);
   const polity = new Polity();
   const norm = (claim: string) => claim.trim().toLowerCase();
@@ -167,6 +176,27 @@ export async function startServer(opts: { port?: number } = {}) {
         console.warn('[0gtown] settlement/replay skipped:', e?.message);
       }
     }
+  }
+
+  /** Dream on 0G: after a loss, synthesize semantic beliefs from the NPC's episode cluster
+   *  (reflect) and score them (verify) — so a *reworded* scam is refused too, not just the
+   *  exact string. Runs on 0G Compute via the reflect backend. Fire-and-forget, never throws;
+   *  a fresh late tick carries a town.belief(source:'dream') beat. No-op unless 0G reflect is on. */
+  async function dreamConsolidate(npcId: string): Promise<void> {
+    if (!memReflect) return;
+    const k: any = memKernel;
+    try {
+      const r = await k.reflect(corpusPath(npcId));                 // episodes → semantic beliefs (on 0G)
+      let verified = 0;
+      try { const v = await k.verify?.(corpusPath(npcId)); verified = v?.verified ?? 0; } catch { /* verify optional */ }
+      const synthesized = r?.beliefs ?? 0;
+      if (synthesized || verified) {
+        rec.tick(++replayT);
+        rec.event('town.belief', { actor: npcId, by: 'npc', data: { source: 'dream', synthesized, verified } });
+        rec.metrics({ 'receipts.compute': receipts.compute, 'receipts.storage': receipts.storage });
+        rec.flush();
+      }
+    } catch (e: any) { console.warn('[0gtown] dream skipped:', e?.message); }
   }
 
   async function roomSnapshot() {
@@ -369,6 +399,9 @@ export async function startServer(opts: { port?: number } = {}) {
 
           // LEARN: record the episode + form a direct belief + drop this visitor's trust
           await cognition.learn(npc.id, visitorId, { topic, description: belief, outcome: 'loss' });
+          // CONSOLIDATE: dream on 0G to generalize the lesson (off the reply path; its network
+          // latency lands the belief tick after this pitch's replay frames). No-op without 0G reflect.
+          void dreamConsolidate(npc.id);
 
           // keep the 0G Storage belief anchoring (library ⑤) — unchanged
           let root: string | undefined;
