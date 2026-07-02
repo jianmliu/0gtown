@@ -281,6 +281,8 @@ function setReceipts(r){ state.receipts=r; $('#t-compute').textContent=r.compute
 const byId=id=>state.npcs.find(n=>n.id===id);
 const byName=nm=>state.npcs.find(n=>n.name===nm);
 const nameOf=id=>byId(id)?.name||id;
+// engine-authored belief/warning strings embed raw NPC ids (e.g. npc:0gtown:liu) — show the display name instead.
+const humanize=t=>String(t==null?'':t).replace(/npc:0gtown:[a-z0-9_-]+/gi, m=>nameOf(m));
 // per-NPC 0G EOA + on-chain $0G balance (shown once on-chain settlement is configured)
 function chainChip(n){ if(!n||!n.address)return''; const oc=state.onchain[n.id];
   const url=`https://chainscan${state.net==='mainnet'?'':'-galileo'}.0g.ai/address/${n.address}`;
@@ -324,20 +326,20 @@ function render(e){
     return `<div class="msg npc"><div class="who">${esc(e.npc)}</div><div class="bub">${esc(e.t)}</div>${seal}</div>`;
   }
   if(e.k==='loss') return `<div class="beat loss"><div class="line">🪙 ${esc(e.npc)} believed you — handed over <b>${e.amt} $0G</b> (purse → ${e.bal}). A hard lesson, freshly bought.</div>${stamp(e.root)}</div>`;
-  if(e.k==='learn') return `<div class="beat learn"><div class="line">🛡 ${esc(e.npc)} won’t be fooled twice: <em>“${esc(e.belief)}”</em></div>${e.root?stamp(e.root,'recalled from 0G Storage'):''}</div>`;
+  if(e.k==='learn') return `<div class="beat learn"><div class="line">🛡 ${esc(e.npc)} won’t be fooled twice: <em>“${esc(humanize(e.belief))}”</em></div>${e.root?stamp(e.root,'recalled from 0G Storage'):''}</div>`;
   if(e.k==='lent'){
     if(e.ok) return `<div class="beat"><div class="line">🤝 ${esc(e.npc)} spots you <b>${e.amt} $0G</b> on credit — due next turn. Skip out and the guild hears about it.</div></div>`;
-    return `<div class="beat loss"><div class="line">⛔ ${esc(e.reason||'No credit for you.')}</div></div>`;
+    return `<div class="beat loss"><div class="line">⛔ ${esc(humanize(e.reason||'No credit for you.'))}</div></div>`;
   }
   if(e.k==='extorted'){
-    if(e.caught) return `<div class="beat loss"><div class="line">⚖ ${esc(e.reason||'Caught — the night-market guild bars you.')}</div></div>`;
-    return `<div class="beat"><div class="line">🌑 ${esc(e.reason||'You slip away — this time.')}</div></div>`;
+    if(e.caught) return `<div class="beat loss"><div class="line">⚖ ${esc(humanize(e.reason||'Caught — the night-market guild bars you.'))}</div></div>`;
+    return `<div class="beat"><div class="line">🌑 ${esc(humanize(e.reason||'You slip away — this time.'))}</div></div>`;
   }
   if(e.k==='street') return `<div class="beat"><div class="line" style="opacity:.7;font-size:12.5px;font-style:italic">${esc(e.t)}</div></div>`;
   if(e.k==='fortune') return `<div class="beat learn"><div class="line">🎉 ${esc(e.npc)} caught a windfall — <b>+${e.amt} $0G</b> from the escrow.</div></div>`;
   if(e.k==='settle-note') return `<div class="beat"><div class="line">⛓ ${esc(e.text)}</div></div>`;
   if(e.k==='verify-note') return `<div class="beat"><div class="line">⛓ ${esc(e.text)}</div></div>`;
-  if(e.k==='verify') return `<div class="beat ${e.ok?'learn':'loss'}"><div class="line">${e.ok?'✓ verified against 0G Storage':'✗ could not verify'}${e.err?' ('+esc(e.err)+')':''}</div>${e.ok&&e.data?'<div class="line">“'+esc(e.data)+'”</div>':''}</div>`;
+  if(e.k==='verify') return `<div class="beat ${e.ok?'learn':'loss'}"><div class="line">${e.ok?'✓ verified against 0G Storage':'✗ could not verify'}${e.err?' ('+esc(e.err)+')':''}</div>${e.ok&&e.data?'<div class="line">“'+esc(humanize(e.data))+'”</div>':''}</div>`;
   if(e.k==='settle'){
     const link=e.tx
       ? `<a class="chain-link" href="${esc(e.tx.url)}" target="_blank" rel="noopener">⛓ ${esc(String(e.tx.txHash).slice(0,10))}…</a>`
@@ -408,7 +410,7 @@ function onVerified(m){ const id=state.cur||(state.npcs[0]&&state.npcs[0].id); i
 }
 function renderLedger(){ const el=$('#ledger');
   if(!state.beliefs.length){ el.innerHTML='<div class="empty">No hard lessons yet. Go teach someone a thing or two.</div>'; return; }
-  el.innerHTML=state.beliefs.map(b=>`<div class="belief"><div class="who">${esc(b.npc)} learned</div><div class="txt">“${esc(b.belief)}”</div>${b.root?stamp(b.root):'<span class="seal local" style="font-size:10px"><span class="dot"></span>off-chain</span>'}</div>`).join('');
+  el.innerHTML=state.beliefs.map(b=>`<div class="belief"><div class="who">${esc(b.npc)} learned</div><div class="txt">“${esc(humanize(b.belief))}”</div>${b.root?stamp(b.root):'<span class="seal local" style="font-size:10px"><span class="dot"></span>off-chain</span>'}</div>`).join('');
 }
 function bumpBal(nm,bal){ const n=byName(nm); if(n){ n.balance0G=bal; renderStalls(); if(state.cur===n.id){ const b=$('#whobar .bal'); if(b)b.innerHTML='<small>purse</small>'+bal+' $0G'; } } }
 function busy(nm,on){ const n=byName(nm); if(!n)return; const el=document.querySelector('.stall[data-id="'+n.id+'"]'); if(el)el.classList.toggle('busy',on); }
